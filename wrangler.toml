@@ -1,0 +1,19 @@
+name = "stampify"
+compatibility_date = "2025-09-01"
+
+# The app is the Vite build in ./dist, served as static files. A small Worker script (worker/index.ts) answers /api/*
+# only: accounts and progress sync, stored in the D1 database below. Routing is hash-based (#/...), so no
+# single-page-app fallback is needed.
+main = "worker/index.ts"
+
+[assets]
+directory = "./dist"
+binding = "ASSETS"
+# Only API requests start the Worker; everything else is served straight from the static files (free, unmetered).
+run_worker_first = ["/api/*"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "stampify"
+database_id = "d83fa5b3-add2-469f-abc6-684a7fe25929"
+migrations_dir = "migrations"

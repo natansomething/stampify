@@ -1,0 +1,11 @@
+<!doctype html><html><body><div id="app"></div><pre id="o">start</pre><script type="module">
+const o = document.getElementById('o'); const p = (s) => o.textContent += '\n' + s;
+window.addEventListener('unhandledrejection', (e) => p('rej ' + (e.reason && e.reason.stack || e.reason)));
+const st = await import('/src/core/store.ts');
+p('import ok');
+const t = setTimeout(() => p('loadState still pending after 3s'), 3000);
+await st.loadState(); clearTimeout(t); p('loaded ' + JSON.stringify(st.state).slice(0, 100));
+const { render, h } = await import('preact');
+const { Home } = await import('/src/views/Home.tsx');
+try { render(h(Home, {}), document.getElementById('app')); p('rendered ' + document.getElementById('app').innerHTML.length); } catch (e) { p('render ERR ' + e.stack); }
+</script></body></html>

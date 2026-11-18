@@ -1,0 +1,29 @@
+# Dependencies (reinstalled with `npm install`)
+node_modules/
+
+# Build output (recreated with `npm run build`)
+dist/
+
+# Local Cloudflare state: the local D1 database and Wrangler temp files
+.wrangler/
+
+# Screenshots from the UI test script
+dev/out/
+
+# Secrets and local environment settings
+.env
+.env.*
+.dev.vars
+.dev.vars.*
+
+# Logs
+*.log
+npm-debug.log*
+
+# Editor and OS files
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+*:Zone.Identifier

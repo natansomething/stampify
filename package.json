@@ -1,0 +1,35 @@
+{
+  "name": "stampify",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host",
+    "build": "tsx scripts/library.ts && tsc --noEmit && tsc --noEmit -p worker && vite build",
+    "dev:api": "wrangler d1 migrations apply stampify --local && wrangler dev --port 8787",
+    "preview": "vite preview --host",
+    "check": "tsc --noEmit && tsc --noEmit -p worker",
+    "validate": "tsx scripts/validate.ts",
+    "test:subs": "tsx scripts/test-subtitles.ts",
+    "test:hu": "tsx scripts/test-hungarian.ts",
+    "library": "tsx scripts/library.ts",
+    "dump": "tsx scripts/dump-texts.ts",
+    "deploy": "npm run build && wrangler whoami > /dev/null && wrangler d1 migrations apply stampify --remote && wrangler deploy"
+  },
+  "dependencies": {
+    "hanzi-writer": "^3.7.3",
+    "preact": "^11.0.2",
+    "tesseract.js": "^7.0.0"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261031.1",
+    "@preact/preset-vite": "^2.10.6",
+    "@types/node": "^26.6.5",
+    "pureimage": "^0.4.20",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.5",
+    "vite-plugin-pwa": "^2.0.0",
+    "wrangler": "^4.152.0"
+  }
+}

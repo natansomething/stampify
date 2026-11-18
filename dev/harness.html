@@ -1,0 +1,78 @@
+<!doctype html>
+<!-- UI test driver for dev/ui-test.sh: loads the app in an iframe, optionally seeds IndexedDB, runs steps, prints results. -->
+<html><head><meta charset="utf-8"><style>body{margin:0}iframe{border:0;display:block;height:100vh}</style></head>
+<body>
+<iframe id="f"></iframe>
+<pre id="result" style="display:none"></pre>
+<script type="module">
+const P = new URLSearchParams(location.search);
+const f = document.getElementById('f');
+const log = [];
+const errs = [];
+// Real-time wait (see the dev-sleep plugin in vite.config.ts)
+// Alternates real time (a pending request pauses virtual time) with virtual time (timers, effects, animation frames).
+async function sleep(ms) {
+  for (let t = 0; t < ms; t += 100) {
+    await fetch('/__sleep?ms=50').then((r) => r.text());
+    await new Promise((r) => setTimeout(r, 50));
+  }
+}
+
+function idb(fn) {
+  return new Promise((res, rej) => {
+    const req = indexedDB.open('lingosystem', 1);
+    req.onupgradeneeded = () => req.result.createObjectStore('kv');
+    req.onsuccess = () => { const db = req.result; const tx = db.transaction('kv', 'readwrite'); fn(tx.objectStore('kv')); tx.oncomplete = () => { db.close(); res(); }; tx.onerror = () => rej(tx.error); };
+    req.onerror = () => rej(req.error);
+  });
+}
+
+/** Awaits a promise while keeping real time flowing (IndexedDB does not advance under virtual time). */
+async function real(p) {
+  let done = false;
+  p.finally(() => { done = true; });
+  while (!done) await sleep(100);
+  return p;
+}
+
+async function run() {
+  const seed = P.get('seed');
+  await real(idb((s) => { seed ? s.put(JSON.parse(seed), 'state') : s.delete('state'); s.delete('account'); }));
+  f.style.width = P.get('fw') ? P.get('fw') + 'px' : '100%';
+  f.src = '/' + (P.get('hash') || '#/');
+  await new Promise((r) => (f.onload = r));
+  const w = f.contentWindow;
+  w.addEventListener('error', (e) => errs.push(String(e.message)));
+  w.addEventListener('unhandledrejection', (e) => errs.push('promise: ' + String(e.reason)));
+  const origErr = w.console.error;
+  w.console.error = (...a) => { errs.push('console: ' + a.join(' ')); origErr.apply(w.console, a); };
+  w.speechSynthesis && (w.speechSynthesis.speak = () => {});
+  const css = w.document.createElement('style');
+  css.textContent = '*,*::before,*::after{animation:none!important;transition:none!important}';
+  w.document.head.appendChild(css);
+  await sleep(1200);
+  const d = w.document;
+  const q = (sel) => d.querySelector(sel);
+  for (const step of (P.get('steps') || '').split('|').filter(Boolean)) {
+    const i = step.indexOf(':');
+    const cmd = step.slice(0, i), arg = step.slice(i + 1);
+    try {
+      if (cmd === 'wait') await sleep(+arg);
+      else if (cmd === 'hash') { w.location.hash = arg; await sleep(500); }
+      else if (cmd === 'click') { const el = q(arg); if (!el) throw new Error('no element ' + arg); el.click(); await sleep(250); }
+      else if (cmd === 'clicktext') { const [sel, txt] = arg.split('='); const el = [...d.querySelectorAll(sel)].find((e) => e.textContent.includes(txt)); if (!el) throw new Error('no ' + sel + ' with ' + txt); el.click(); await sleep(250); }
+      else if (cmd === 'key') { w.dispatchEvent(new w.KeyboardEvent('keydown', { key: arg === 'Space' ? ' ' : arg, bubbles: true })); await sleep(200); }
+      else if (cmd === 'type') { const [sel, ...rest] = arg.split('='); const el = q(sel); el.value = rest.join('='); el.dispatchEvent(new w.Event('input', { bubbles: true })); await sleep(150); }
+      else if (cmd === 'text') log.push(arg + ' => ' + (q(arg)?.innerText ?? 'MISSING').replace(/\s+/g, ' ').slice(0, 300));
+      else if (cmd === 'count') log.push(arg + ' => ' + d.querySelectorAll(arg).length);
+      else if (cmd === 'eval') log.push('eval => ' + String(w.eval(arg)).slice(0, 400));
+      else log.push('unknown step ' + step);
+    } catch (e) { log.push('STEP FAILED ' + step + ': ' + e.message); }
+  }
+  if (!d.querySelector('#app')?.children.length) errs.push('app did not render');
+  const out = document.getElementById('result');
+  out.textContent = log.join('\n') + '\nERRORS: ' + (errs.length ? errs.join(' ;; ') : 'none');
+}
+run().catch((e) => { const out = document.getElementById('result'); out.textContent = 'HARNESS FAILED ' + e; });
+</script>
+</body></html>
