@@ -50,7 +50,7 @@ export default defineConfig({
       workbox: {
         // The app shell is precached. Content (11 languages, books) is too big for that: a language's files are cached
         // the first time it is opened, a long text when it is first read, so they work offline from then on.
-        globPatterns: ['**/*.{js,css,html,svg,png,woff2}'],
+        globPatterns: ['**/*.{js,css,html,svg,png,webp,woff2}'],
         globIgnores: ['**/assets/content/**'],
         navigateFallbackDenylist: [/^\/api\//],
         maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,

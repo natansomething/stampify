@@ -16,7 +16,7 @@ export interface Ctx {
   arg?: string;
 }
 
-export type Category = 'vocab' | 'sentence' | 'listen' | 'grammar' | 'special';
+export type Category = 'minigame' | 'vocab' | 'sentence' | 'listen' | 'grammar' | 'special';
 
 export interface GameDef {
   id: string;
@@ -35,10 +35,15 @@ export interface GameDef {
   progress?: (ctx: Ctx) => import('../core/progress').Stats;
   /** Why the game can't be played right now (not enough content), or null. */
   check?: (ctx: Ctx) => string | null;
+  /** Minigames: a screenshot shown on the Minigames page instead of an icon (path under public/). */
+  cover?: string;
+  /** Still being built: playable, but shown with a "Work in progress" badge. */
+  wip?: boolean;
   Comp: FunctionComponent<{ ctx: Ctx }>;
 }
 
 export const CATEGORIES: { id: Category; name: string }[] = [
+  { id: 'minigame', name: 'Minigames' },
   { id: 'vocab', name: 'Vocabulary' },
   { id: 'sentence', name: 'Sentences' },
   { id: 'listen', name: 'Listening' },

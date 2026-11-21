@@ -26,7 +26,8 @@ export function Practice({ l }: { l: LangId }) {
   const { c, lx } = data;
   const ctx = makeCtx(l, c, lx, `#/${l}/practice`);
   const mine = collection(lx).length;
-  const games = gamesFor(l).filter((g) => !ctx.mine || g.mine);
+  const games = gamesFor(l).filter((g) => g.cat !== 'minigame' && (!ctx.mine || g.mine));
+  const minigames = gamesFor(l).filter((g) => g.cat === 'minigame').length;
 
   const setBand = (b: Band) => { ls.band = b; commit(); };
   const setSrc = (s: 'pool' | 'mine') => { ls.src = s; commit(); };
@@ -34,15 +35,7 @@ export function Practice({ l }: { l: LangId }) {
   return (
     <div>
       <h1>Practice</h1>
-      <a class="read-card" href={`#/${l}/read`}>
-        <Icon name="read" size={30} />
-        <div class="grow">
-          <b>Read</b>
-          <div class="small muted">Stories and dialogues at your level: tap any word for its meaning, finish a text for XP and a short quiz.</div>
-        </div>
-        <span class="tool-go" aria-hidden="true"><Icon name="back" size={18} /></span>
-      </a>
-      <div class="stack" style={{ marginTop: 14 }}>
+      <div class="stack">
         {!ctx.mine && <div class="bands" role="radiogroup" aria-label="Level">
           {BANDS.map((b) => (
             <button key={b.id} class={cls(ls.band === b.id && 'on')} onClick={() => setBand(b.id)} role="radio" aria-checked={ls.band === b.id}>
@@ -72,6 +65,29 @@ export function Practice({ l }: { l: LangId }) {
         )}
       </div>
 
+      <section>
+        <div class="section-title"><h2>Immersive learning</h2></div>
+        <div class="stack">
+          <a class="read-card" href={`#/${l}/read`}>
+            <Icon name="read" size={30} />
+            <div class="grow">
+              <b>Read</b>
+              <div class="small muted">Stories and dialogues at your level: tap any word for its meaning, finish a text for XP and a short quiz.</div>
+            </div>
+            <span class="tool-go" aria-hidden="true"><Icon name="back" size={18} /></span>
+          </a>
+          {minigames > 0 && (
+            <a class="read-card games-card" href={`#/${l}/games`}>
+              <Icon name="adventure" size={30} />
+              <div class="grow">
+                <b>Minigames</b>{gamesFor(l).some((g) => g.cat === 'minigame' && g.wip) && <> <span class="badge accent">Work in progress</span></>}
+                <div class="small muted">Games played in {m.name.split(' ')[0]}: talk to characters, solve quests, and save the words you meet on the way.</div>
+              </div>
+              <span class="tool-go" aria-hidden="true"><Icon name="back" size={18} /></span>
+            </a>
+          )}
+        </div>
+      </section>
       {CATEGORIES.map((cat) => {
         if (cat.id === 'grammar') {
           if (ctx.mine) return null;
@@ -121,6 +137,39 @@ export function Practice({ l }: { l: LangId }) {
           </section>
         );
       })}
+    </div>
+  );
+}
+
+/** The minigames of a language (#/<lang>/games), opened from Practice → Immersive learning. */
+export function Minigames({ l }: { l: LangId }) {
+  useStore();
+  rememberLang(l);
+  const games = gamesFor(l).filter((g) => g.cat === 'minigame');
+  const name = LANGS[l].name.split(' ')[0];
+  return (
+    <div>
+      <div class="game-top">
+        <a class="icon-btn plain" href={`#/${l}/practice`} aria-label="Back to practice"><Icon name="back" /></a>
+      </div>
+      <h1>Minigames</h1>
+      <p class="muted">Everything in these games is in {name}. Tap any word to look it up, hear it or save it to your words. Each course keeps its own progress.</p>
+      {games.some((g) => g.wip) && <p class="notice small"><Icon name="warn" /><span>Work in progress: these games are still being built. You can play them, but expect unfinished areas and changes.</span></p>}
+      {!games.length && <p class="notice small">No minigames for {name} yet.</p>}
+      <div class="game-covers">
+        {games.map((g) => (
+          <a key={g.id} class="game-cover" href={`#/${l}/play/${g.id}`}>
+            {g.cover ? <img src={g.cover} alt={`Screenshot of ${g.name}`} loading="lazy" /> : <div class="game-cover-blank"><Icon name={g.id} size={40} /></div>}
+            <div class="game-cover-body">
+              <div class="grow">
+                <b>{g.name}</b>{g.wip && <> <span class="badge accent">Work in progress</span></>}
+                <p>{g.desc}</p>
+              </div>
+              <span class="btn primary sm">{lang(l).adv?.flags.length ? 'Continue' : 'Play'}</span>
+            </div>
+          </a>
+        ))}
+      </div>
     </div>
   );
 }

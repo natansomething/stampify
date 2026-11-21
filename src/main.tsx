@@ -16,7 +16,7 @@ import { GuideList, LessonView, SheetList, SheetView } from './views/Guide';
 import { FindWords } from './views/Find';
 import { Tools } from './views/Tools';
 import { Watch } from './views/Watch';
-import { Practice } from './views/Practice';
+import { Minigames, Practice } from './views/Practice';
 import { Play } from './views/Play';
 import { ReaderList, Reader } from './views/Reader';
 import { Review } from './views/Review';
@@ -31,7 +31,7 @@ import { WordPopup } from './views/WordInfo';
  * Hash routes:
  *   #/  first-run passport picker (else redirects to the current language) · #/settings
  *   #/account (profile) · #/account/signin|signup|recover · #/privacy
- *   #/<lang> Today · #/<lang>/practice · #/<lang>/read[/<textId>] · #/<lang>/words · #/<lang>/review
+ *   #/<lang> Today · #/<lang>/practice · #/<lang>/games (minigames) · #/<lang>/read[/<textId>] · #/<lang>/words · #/<lang>/review
  *   #/<lang>/play/<gameId>[/<arg>]
  */
 function parse(hash: string): string[] {
@@ -85,7 +85,7 @@ function App() {
   useEffect(() => { if (!first && started) location.replace(`#/${current}`); }, [first, started]);
 
   const focus = !!l && (second === 'play' || second === 'review' || (second === 'read' && !!third) || (second === 'guide' && fourth === 'practice'));
-  const tab: Tab | null = !l ? null : !second ? 'today' : second === 'practice' || second === 'read' ? 'practice' : second === 'tools' ? 'tools' : second === 'guide' ? 'guide' : second === 'words' ? 'words' : null;
+  const tab: Tab | null = !l ? null : !second ? 'today' : second === 'practice' || second === 'read' || second === 'games' ? 'practice' : second === 'tools' ? 'tools' : second === 'guide' ? 'guide' : second === 'words' ? 'words' : null;
 
   let view;
   if (first === 'settings') view = <Settings />;
@@ -94,6 +94,7 @@ function App() {
   else if (!l) view = <Welcome />;
   else if (!second) view = <Today l={l} />;
   else if (second === 'practice') view = <Practice l={l} />;
+  else if (second === 'games') view = <Minigames l={l} />;
   else if (second === 'read') view = third ? <Reader l={l} id={third} /> : <ReaderList l={l} />;
   else if (second === 'review') view = <Review l={l} />;
   else if (second === 'guide' && third === 'sheets') view = fourth ? <SheetView key={fourth} l={l} id={fourth} /> : <SheetList l={l} />;

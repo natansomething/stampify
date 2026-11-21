@@ -9,6 +9,7 @@ import { stems } from '../src/core/util';
 import { hanCount, pinyinFits } from '../src/core/pinyin';
 import { LANG_IDS, LANGS as META } from '../src/core/langs';
 import { longTexts, staleLibraries } from './library';
+import { COUNTRIES, LINE_KEYS, MAPS, NPC_KINDS } from '../src/games/adventure/world';
 
 const LANGS = LANG_IDS;
 /** Allowed noun genders per language (languages without gender are missing). */
@@ -351,7 +352,7 @@ for (const lang of only ? [only] : LANGS) {
   checkLang(lang, { ...c, texts: [...c.texts, ...long] }, long.length);
 }
 // Guidebooks (src/content/<lang>/guide.ts). Activity ids are read from the game files (their GameDef ids).
-const GAME_IDS = new Set(readdirSync(new URL('../src/games/', import.meta.url)).flatMap((f) =>
+const GAME_IDS = new Set((readdirSync(new URL('../src/games/', import.meta.url), { recursive: true }) as string[]).filter((f) => /\.tsx?$/.test(f)).flatMap((f) =>
   [...readFileSync(new URL(`../src/games/${f}`, import.meta.url), 'utf8').matchAll(/\bid: '([a-z]+)'/g)].map((m) => m[1])));
 for (const lang of only ? [only] : LANGS) {
   const path = new URL(`../src/content/${lang}/guide.ts`, import.meta.url);
@@ -457,6 +458,25 @@ for (const lang of only ? [only] : LANGS) {
     });
   }
   console.log(`  ${sheets.length} sheets, ${rows} table rows`);
+}
+
+// Adventure dialogue (optional per language): every line the world uses, tokenised like texts
+for (const lang of only ? [only] : LANGS) {
+  const file = `src/content/${lang}/adventure.ts`;
+  if (!existsSync(file)) continue;
+  console.log(`\n${lang} adventure`);
+  const a = (await import(`../${file}`)).default as import('../src/content/types').AdventureText;
+  if (!(a.lv >= 1 && a.lv <= 6)) err(`${lang} adventure`, 'lv must be 1-6');
+  for (const k of LINE_KEYS) {
+    const ln = a.lines[k];
+    if (!ln) { err(`${lang} adventure`, `missing line ${k}`); continue; }
+    if (!ln.en?.trim()) err(`${lang} adventure ${k}`, 'missing English');
+    checkTokens(lang, `${lang} adventure ${k}`, ln.t);
+  }
+  for (const k of Object.keys(a.lines)) if (!(LINE_KEYS as readonly string[]).includes(k)) warn(`${lang} adventure`, `line ${k} is not used by the world`);
+  for (const n of NPC_KINDS) if (!a.names[n]) err(`${lang} adventure`, `no name for ${n}`);
+  for (const id of [...Object.keys(MAPS), ...Object.keys(COUNTRIES)]) if (!a.places[id]) err(`${lang} adventure`, `no place name for ${id}`);
+  console.log(`  ${Object.keys(a.lines).length} lines`);
 }
 
 const stale = only ? [] : await staleLibraries();

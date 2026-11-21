@@ -12,6 +12,7 @@
     "validate": "tsx scripts/validate.ts",
     "test:subs": "tsx scripts/test-subtitles.ts",
     "test:hu": "tsx scripts/test-hungarian.ts",
+    "test:adventure": "tsx scripts/test-adventure.ts",
     "library": "tsx scripts/library.ts",
     "dump": "tsx scripts/dump-texts.ts",
     "deploy": "npm run build && wrangler whoami > /dev/null && wrangler d1 migrations apply stampify --remote && wrangler deploy"

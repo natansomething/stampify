@@ -14,7 +14,8 @@ export function Play({ l, game, arg }: { l: LangId; game: string; arg?: string }
   if (!data) return <Loading />;
   // Opened from a Guidebook lesson (…?back=#/de/guide/x): closing the game goes back there
   const back = new URLSearchParams(location.hash.split('?')[1] || '').get('back');
-  const ctx = makeCtx(l, data.c, data.lx, back?.startsWith('#/') ? back : `#/${l}/practice`, arg);
+  const home = def.cat === 'minigame' ? `#/${l}/games` : `#/${l}/practice`;
+  const ctx = makeCtx(l, data.c, data.lx, back?.startsWith('#/') ? back : home, arg);
   const why = def.check?.(ctx);
   if (why) return <Empty icon="warn" title={def.name}>{why}. <a href={`#/${l}/practice`}>Back</a></Empty>;
   const Comp = def.Comp;

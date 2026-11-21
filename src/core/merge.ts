@@ -117,6 +117,9 @@ function mergeLang(b: LangState | undefined, l: LangState | undefined, r: LangSt
   if (l.seen || r.seen) out.seen = mergeMap(b?.seen, l.seen, r.seen, betterCard);
   const known = pick(b?.known, l.known, r.known, hasBase ? undefined : (_l, r) => r);
   if (known) out.known = structuredClone(known);
+  // Adventure save: the side that changed wins; if both played, the one further along (more story flags)
+  const adv = pick(b?.adv, l.adv, r.adv, (x, y) => (y.flags.length > x.flags.length ? y : x));
+  if (adv) out.adv = structuredClone(adv);
   const played = mergeRecent(b?.played, l.played, r.played, 12);
   if (played) out.played = played;
   // A word saved on one device while still practised unsaved on the other: it is saved, with the better card

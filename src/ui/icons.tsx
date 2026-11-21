@@ -62,6 +62,9 @@ const P: Record<string, JSX.Element> = {
   kana: <path d="M5 8.5h13c0 6.5-2.5 10.5-6.5 12M10.5 3.5c0 8.5-2 13-5.5 16" />,
   hangul: <><path d="M9 3.5h6M5.5 8h13" /><circle cx="12" cy="15" r="4.5" /></>,
   cyrillic: <path d="M12 4v16M4 4l5 8-5 8M20 4l-5 8 5 8M9 12h6" />,
+  adventure: <><circle cx="6.5" cy="10" r="1.7" /><circle cx="10" cy="6" r="1.7" /><circle cx="14" cy="6" r="1.7" /><circle cx="17.5" cy="10" r="1.7" /><path d="M12 11.5c-3 0-5.5 3.4-5.5 5.9 0 1.6 1.4 2.4 2.8 2.1 1-.2 1.8-.7 2.7-.7s1.7.5 2.7.7c1.4.3 2.8-.5 2.8-2.1 0-2.5-2.5-5.9-5.5-5.9z" /></>,
+  bag: <><path d="M5 8.5h14l-1.2 11.5H6.2z" /><path d="M9 8.5V7a3 3 0 016 0v1.5" /></>,
+  help: <><circle cx="12" cy="12" r="8.5" /><path d="M9.6 9.6a2.5 2.5 0 114 2c-.9.6-1.6 1.1-1.6 2.2M12 16.8v.2" /></>,
 };
 
 export function Icon({ name, size = 22, label }: { name: string; size?: number; label?: string }) {

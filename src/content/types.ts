@@ -376,3 +376,27 @@ export interface Unit {
   about: string;
   lessons: Lesson[];
 }
+
+/**
+ * The dialogue of the adventure minigame (src/content/<lang>/adventure.ts). The world, quests and logic are the same
+ * for every language (src/games/adventure/world.ts); this file only holds what is said, keyed by the world's
+ * LINE_KEYS (every key needs a line). Lines are tokenised like reading texts, so every word can be tapped, looked up
+ * and saved. Write it at the level in `lv`; speech should sound like friendly animals talking, short lines
+ * (one or two sentences, they fill a small dialogue box). Signs and descriptions are narration (no speaker).
+ */
+export interface AdventureText {
+  /** Level the dialogue is written at. */
+  lv: Level;
+  /** Character names as written in the language, by NPC kind. */
+  names: Record<string, string>;
+  /** Place names: [name in the language, English]. */
+  places: Record<string, [string, string]>;
+  /**
+   * Other made-up names used in the lines (places not yet on a map, inflected forms of names). Names, place names
+   * and these are shown as plain text in dialogues: they can't be tapped or saved, as they aren't words to learn.
+   */
+  proper?: string[];
+  /** Currency names for the wallet: [name in the language, English], by currency id (taler, krone…). */
+  currencies?: Record<string, [string, string]>;
+  lines: Record<string, { t: Token[]; en: string }>;
+}

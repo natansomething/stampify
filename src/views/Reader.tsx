@@ -379,7 +379,7 @@ export function TextReader({ l, text, scratch, children, start, onPos }: {
  * Token indexes grouped so a line never starts with punctuation: each word is its own box and the browser may break
  * between any two, so a punctuation mark is glued to the word before it (an opening mark like „ to the word after it).
  */
-function glue(toks: Token[]): number[][] {
+export function glue(toks: Token[]): number[][] {
   const groups: number[][] = [];
   let open = false; // the last group ends with an opening mark („“《（) and waits for its word
   toks.forEach((t, k) => {
@@ -392,7 +392,7 @@ function glue(toks: Token[]): number[][] {
 }
 
 /** The space before a token in running text (a new sentence starts after a space in spaced languages). */
-const gapBefore = (l: LangId, t: Token, prev: Token | undefined, first: boolean) => (first && LANGS[l].spaced ? ' ' : tokenGap(l, prev?.[0], t[0]));
+export const gapBefore = (l: LangId, t: Token, prev: Token | undefined, first: boolean) => (first && LANGS[l].spaced ? ' ' : tokenGap(l, prev?.[0], t[0]));
 
 /**
  * Heat map: how well the learner knows a word, from its progress boxes (saved or practised in games).
@@ -416,7 +416,7 @@ function HeatLegend() {
   );
 }
 
-function TokenView({ l, lx, t, space, selected, showPy, grammar, heat, onTap }: {
+export function TokenView({ l, lx, t, space, selected, showPy, grammar, heat, onTap }: {
   l: LangId; lx: Lexicon; t: Token; space: string; selected: boolean; showPy: boolean; grammar?: boolean; heat?: boolean; onTap: () => void;
 }) {
   const punct = isPunct(t);
@@ -455,7 +455,7 @@ function saveAll(l: LangId, fresh: string[]) {
   }, (n) => `Saved ${plural(n, 'word')}`);
 }
 
-function WordSheet({ l, lx, t, text, si, scratch, onClose, onStep, onSentence, notes }: {
+export function WordSheet({ l, lx, t, text, si, scratch, onClose, onStep, onSentence, notes }: {
   l: LangId; lx: Lexicon; t: Token; text: Text; si: number; scratch?: boolean; onClose: () => void; onStep: (d: 1 | -1) => void; onSentence: (d: 1 | -1) => void;
   notes: GrammarNote[];
 }) {

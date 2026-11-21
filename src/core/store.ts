@@ -75,6 +75,11 @@ export interface LangState {
    * unmarking a level brings every word back exactly as it was.
    */
   known?: number[];
+  /**
+   * The adventure minigame's save for this course: the game is the same in every language, but each course plays
+   * through it separately. Shape: Save in src/games/adventure/world.ts.
+   */
+  adv?: { map: string; x: number; y: number; dir: string; flags: string[]; items: string[] };
 }
 
 export interface Settings {

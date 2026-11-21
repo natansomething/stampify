@@ -1,5 +1,6 @@
 import type { LangId } from '../content/types';
 import { LANGS } from '../core/langs';
+import { ADVENTURE_GAME } from './adventure';
 import { ZH_GAMES } from './chinese';
 import { DRILL_GAME, GRAMMAR_GAMES } from './grammar';
 import { ROMANIZE_GAMES } from './romanize';
@@ -9,7 +10,7 @@ import type { GameDef } from './types';
 import { VOCAB_GAMES } from './vocab';
 
 /** Every game, in hub order. To add a game: write the component, add its GameDef to one of these lists. */
-const ALL: GameDef[] = [...VOCAB_GAMES, ...SENTENCE_GAMES, ...ZH_GAMES, ...SCRIPT_GAMES, ...ROMANIZE_GAMES, ...GRAMMAR_GAMES];
+const ALL: GameDef[] = [ADVENTURE_GAME, ...VOCAB_GAMES, ...SENTENCE_GAMES, ...ZH_GAMES, ...SCRIPT_GAMES, ...ROMANIZE_GAMES, ...GRAMMAR_GAMES];
 
 export function gamesFor(lang: LangId): GameDef[] {
   return ALL.filter((g) => (!g.langs || g.langs.includes(lang)) && (!g.typed || LANGS[lang].typed));
