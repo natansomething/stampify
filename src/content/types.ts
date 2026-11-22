@@ -399,4 +399,11 @@ export interface AdventureText {
   /** Currency names for the wallet: [name in the language, English], by currency id (taler, krone…). */
   currencies?: Record<string, [string, string]>;
   lines: Record<string, { t: Token[]; en: string }>;
+  /**
+   * The border exam words, hand-picked per country: words that belong to the country being left (its landscape,
+   * quests and tourist life), never filler like "sein". A string is a word of the course vocabulary (its meaning,
+   * article and reading come from there); a word outside the vocabulary is [word, reading, English], German nouns
+   * with their article ("die Höhle"), reading "" where the language has none. At least 10 per country with a border.
+   */
+  exam: Partial<Record<string, (string | [string, string, string])[]>>;
 }

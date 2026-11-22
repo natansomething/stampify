@@ -7,10 +7,11 @@
  */
 import { FENCE, FOREST, ROCK, TRACK, TRACK_H, WATER } from '../src/games/adventure/art';
 import { tileAt } from '../src/games/adventure/render';
-import { MAPS, solid, type MapDef, type Obj } from '../src/games/adventure/world';
+import { LINE_KEYS, MAPS, script, solid, type MapDef, type Obj, type Save, type Step } from '../src/games/adventure/world';
+import { readdirSync, readFileSync } from 'node:fs';
 
 const BLOCKED = new Set([FOREST, WATER, ROCK, FENCE, TRACK, TRACK_H]);
-const BLOCKS = new Set(['log', 'drift', 'bramble', 'towngate', 'gate', 'pole']);
+const BLOCKS = new Set(['log', 'drift', 'bramble', 'towngate', 'gate', 'pole', 'block']);
 let errors = 0;
 const err = (m: string) => { errors++; console.log('  ERROR ' + m); };
 
@@ -60,7 +61,10 @@ function reach(m: MapDef, objs: Obj[], sx: number, sy: number, ignore?: Obj): nu
   return seen.size;
 }
 
+// ONLY=<country>: check just that country's maps (while it is being built)
+const ONLY = process.env.ONLY;
 for (const m of Object.values(MAPS)) {
+  if (ONLY && m.country !== ONLY) continue;
   console.log(m.id);
   const { x, y } = m.spawn;
   // with every roadblock in place and every bridge raised
@@ -89,6 +93,40 @@ for (const m of Object.values(MAPS)) {
     if (!t) { err(`${m.id}: warp to unknown map ${w.to}`); continue; }
     if (BLOCKED.has(tileAt(t, w.tx, w.ty))) err(`${m.id}: warp to ${w.to} lands on a blocked tile ${w.tx},${w.ty}`);
   }
+}
+
+// Every line the scripts can say must be in LINE_KEYS (the text check makes each language write them all). Keys are
+// often built at run time (`train.price_${currency}`), so play every object's script under many random game states.
+{
+  const dir = new URL('../src/games/adventure/countries/', import.meta.url);
+  const src = [readFileSync(new URL('../src/games/adventure/world.ts', import.meta.url), 'utf8'),
+    ...readdirSync(dir).filter((f) => f.endsWith('.ts') && !f.includes('-art')).map((f) => readFileSync(new URL(f, dir), 'utf8'))].join('\n');
+  const flags = [...new Set([...src.matchAll(/(?:set|unset): '([a-z0-9_]+)'|has\(s, '([a-z0-9_]+)'\)/g)].map((m) => m[1] ?? m[2]))];
+  for (const m of src.matchAll(/set: `([a-z_]+)\$\{/g)) for (const v of ['forest', 'ice', 'metro', 'beach', 'lindenburg', 'frostburg', 'central', 'none']) flags.push(m[1] + v);
+  const artSrc = readFileSync(new URL('../src/games/adventure/art.ts', import.meta.url), 'utf8');
+  const items = [...(artSrc.match(/export type ItemKind = ([^;]+);/)?.[1].matchAll(/'([a-z_]+)'/g) ?? [])].map((m) => m[1]);
+  // the countries' own items: whatever they give
+  for (const m of src.matchAll(/give: '([a-z0-9_]+)'/g)) items.push(m[1]);
+  let seed = 1;
+  const rnd = () => ((seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648);
+  const known = new Set<string>(LINE_KEYS as readonly string[]);
+  const missing = new Map<string, string>();
+  const walk = (steps: Step[], where: string) => {
+    for (const st of steps) {
+      const r = st as Record<string, unknown>;
+      for (const k of ['say', 'ask']) if (typeof r[k] === 'string' && !known.has(r[k] as string)) missing.set(r[k] as string, where);
+      for (const o of (r.opts as { o: string; then: Step[] }[] | undefined) ?? []) { if (!known.has(o.o)) missing.set(o.o, where); walk(o.then, where); }
+      for (const k of ['pass', 'fail', 'then', 'else']) if (Array.isArray(r[k])) walk(r[k] as Step[], where);
+    }
+  };
+  for (const m of Object.values(MAPS)) for (const o of m.objs) for (let i = 0; i < (ONLY && m.country !== ONLY ? 0 : 120); i++) {
+    const p = i === 0 ? 0 : i === 1 ? 1 : rnd();
+    const rich = rnd() < 0.5;
+    const save: Save = { map: m.id, x: 0, y: 0, dir: 'down', flags: flags.filter(() => rnd() < p), items: items.filter(() => rnd() < p) as Save['items'],
+      seen: {}, wallet: rich ? { taler: 99, krone: 99, gulden: 99, bean: 99, kredit: 99, dinar: 99, pearl: 99, sol: 99 } : {} };
+    try { walk(script(o, save), `${m.id}/${o.k}${'id' in o ? ':' + o.id : ''}`); } catch { /* a state the game can't reach */ }
+  }
+  for (const [k, where] of missing) err(`line ${k} (said at ${where}) is not in LINE_KEYS`);
 }
 console.log(`\n${errors} errors`);
 process.exit(errors ? 1 : 0);

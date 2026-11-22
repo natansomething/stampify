@@ -1,5 +1,5 @@
 /** What the thing in front of the cat is called (the "name it" key). See THINGS in world.ts. */
-import { cityFacing, STAIRS, EDGE, FENCE, FOREST, PATH, RED, ROCK, TALL, TRACK, TRACK_H, WATER, WHITE, YELLOW, ZEBRA } from './art';
+import { cityFacing, TILE_THINGS, STAIRS, EDGE, FENCE, FOREST, PATH, RED, ROCK, TALL, TRACK, TRACK_H, WATER, WHITE, YELLOW, ZEBRA } from './art';
 import { tileAt } from './render';
 import { present, size, type MapDef, type Save, type Thing } from './world';
 
@@ -33,6 +33,7 @@ export function thingAt(m: MapDef, x: number, y: number, s: Save): Thing {
       case 'ship': return 'ship';
       case 'train': return o.kind === 'train' ? 'train' : 'metrotrain';
       case 'decor': return o.art === 'ticketmachine' ? 'ticketmachine' : o.art === 'board' || o.art === 'board2' ? 'board' : o.art === 'pillar' ? 'pillar' : o.art.startsWith('poster') ? 'poster' : o.art.startsWith('psign') ? 'platformsign' : o.art.startsWith('car') ? 'car' : o.art === 'flowers' ? 'flowerbed' : (o.art as Thing);
+      case 'block': return o.art;
       case 'towngate': return 'towngate';
       case 'bridge': return 'bridge';
       case 'wheel': return 'wheel';
@@ -40,6 +41,8 @@ export function thingAt(m: MapDef, x: number, y: number, s: Save): Thing {
     }
   }
   const c = tileAt(m, x, y), t = m.theme;
+  const own = TILE_THINGS[t]?.(c);
+  if (own) return own;
   if (c === TRACK || c === TRACK_H) return 'track';
   if (c === EDGE) return 'platform';
   if (c === PATH && t === 'subway') return 'stairs';

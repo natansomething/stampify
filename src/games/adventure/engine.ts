@@ -17,16 +17,36 @@ void EDGE;
 const STEP: Record<Dir, [number, number]> = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] };
 
 /** Built maps are kept, so going back and forth through a door is instant. */
-const worlds = new Map<string, { world: World; layers: HTMLCanvasElement[] }>();
+const worlds = new Map<string, { world: World; layers: HTMLCanvasElement[] | null }>();
 function built(m: MapDef) {
   let w = worlds.get(m.id);
-  if (!w) { const world = buildWorld(m); w = { world, layers: world.ground.map(toCanvas) }; worlds.set(m.id, w); }
+  if (!w) { w = { world: buildWorld(m), layers: null }; worlds.set(m.id, w); }
   return w;
 }
 const worldOf = (m: MapDef) => built(m).world;
-const layersOf = (m: MapDef) => built(m).layers;
+function layersOf(m: MapDef) { const w = built(m); return (w.layers ??= w.world.ground.map(toCanvas)); }
 
-const canvases = new WeakMap<Pix, HTMLCanvasElement>();
+let canvases = new WeakMap<Pix, HTMLCanvasElement>();
+
+/**
+ * Forgets every cached canvas (map layers and sprites); they are drawn again from their pixels on next use. Phones
+ * wipe canvas memory while the app is in the background, which left only the dark green backdrop on return.
+ */
+export function dropCanvasCaches() {
+  canvases = new WeakMap();
+  for (const w of worlds.values()) w.layers = null;
+}
+
+/** Calls `fix` whenever the canvases may have been wiped: back from the background, or a lost context restored. */
+export function onCanvasesWiped(main: HTMLCanvasElement, fix: () => void): () => void {
+  let hiddenAt = 0;
+  const vis = () => { if (document.hidden) hiddenAt = Date.now(); else if (hiddenAt) fix(); };
+  const show = (e: PageTransitionEvent) => { if (e.persisted) fix(); };
+  document.addEventListener('visibilitychange', vis);
+  window.addEventListener('pageshow', show);
+  main.addEventListener('contextrestored', fix);
+  return () => { document.removeEventListener('visibilitychange', vis); window.removeEventListener('pageshow', show); main.removeEventListener('contextrestored', fix); };
+}
 export function toCanvas(p: Pix): HTMLCanvasElement {
   let c = canvases.get(p);
   if (!c) {
@@ -50,7 +70,7 @@ export class Engine {
   paused = false;
   /** Dev option: walk through anything. */
   noclip = false;
-  /** Shift / held B: run. */
+  /** Held Space (keyboard) or held B (touch): run. */
   running = false;
   private held: Dir[] = [];
   private turnedAt = 0;
@@ -58,12 +78,12 @@ export class Engine {
   private from = { x: 0, y: 0 };
   private t = 0; // 0..1 along the current step
   private steps = 0;
-  private layers: HTMLCanvasElement[];
   private world: World;
   private raf = 0;
   private last = 0;
   private chompUntil = 0;
   private ctx: CanvasRenderingContext2D;
+  private fixedAt = 0;
   private vw = 0;
   private vh = 0;
 
@@ -73,8 +93,10 @@ export class Engine {
     this.ctx = canvas.getContext('2d')!;
     this.map = MAPS[save.map];
     this.world = worldOf(this.map);
-    this.layers = layersOf(this.map);
   }
+
+  /** After the canvases were wiped: get the drawing context again (map layers and sprites rebuild on use). */
+  refresh() { dropCanvasCaches(); this.ctx = this.canvas.getContext('2d')!; this.ctx.imageSmoothingEnabled = false; }
 
   get mapDef() { return this.map; }
 
@@ -82,18 +104,18 @@ export class Engine {
   go(to: string, x: number, y: number, dir: Dir) {
     this.map = MAPS[to];
     this.world = worldOf(this.map);
-    this.layers = layersOf(this.map);
     this.save.map = to;
     this.place(x, y, dir);
   }
 
   start() {
     const loop = (now: number) => {
+      // the next frame is asked for first, so one failed frame (a canvas wiped in the background) can't stop the game
+      this.raf = requestAnimationFrame(loop);
       const dt = Math.min(0.05, (now - (this.last || now)) / 1000);
       this.last = now;
       this.update(dt, now);
-      this.draw(now);
-      this.raf = requestAnimationFrame(loop);
+      try { this.draw(now); } catch { if (now - this.fixedAt > 1000) { this.fixedAt = now; this.refresh(); } }
     };
     this.raf = requestAnimationFrame(loop);
   }
@@ -239,7 +261,7 @@ export class Engine {
     ctx.fillStyle = '#17421f';
     ctx.fillRect(0, 0, vw, vh);
     const frame = Math.floor(now / 600) % 2;
-    ctx.drawImage(this.layers[frame], cx + MARGIN * T, cy + MARGIN * T, vw, vh, 0, 0, vw, vh);
+    ctx.drawImage(layersOf(this.map)[frame], cx + MARGIN * T, cy + MARGIN * T, vw, vh, 0, 0, vw, vh);
     const blit = (p: Pix, x: number, y: number, flip = false, sy0 = 0, sy1 = p.h) => {
       const c = toCanvas(p);
       if (!flip) { ctx.drawImage(c, 0, sy0, p.w, sy1 - sy0, x, y + sy0, p.w, sy1 - sy0); return; }

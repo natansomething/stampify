@@ -1,20 +1,21 @@
 /**
- * The ride cutscene (4 seconds; A, Space or a tap skips it). The train stays in view, slightly rocking, while the
+ * The ride cutscene (4 seconds, not skippable: it is short). The train stays in view, slightly rocking, while the
  * world streams past behind it in layers at different speeds.
  * - Train: sky and clouds, distant mountains / hills / skyline, then the game's own trees and houses, the ground,
  *   catenary poles and their wires. The look follows the destination: green Woodland, snowy Frostland (falling
  *   snow), the Megacity at sunset with lit windows.
- * - Metro: a tunnel with ribs, lamps and signals racing past, a train passing the other way, a station flashing by.
+ * - Metro: a dark tunnel with ribs, lamps and signals racing past.
  */
 import { useEffect, useRef } from 'preact/hooks';
 import { sfx } from '../../core/sfx';
-import { FOREST_TREES, house, METRO_TRAIN, SNOW_TREES, trainArt } from './art';
+import { FOREST_TREES, house, METRO_TRAIN, RIDE_LOOKS, SNOW_TREES, trainArt, type RideLook } from './art';
 import { toCanvas } from './engine';
 import { hash } from './pix';
 
 export const RIDE_MS = 4000;
 
-type Scenery = 'forest' | 'ice' | 'metro';
+/** The country the train is going to (its look: built in here, or RIDE_LOOKS from a country's art). */
+type Scenery = string;
 
 const W = 320, H = 180;
 const TRACK_Y = 150;
@@ -28,8 +29,8 @@ export function Ride({ kind, scenery, title, onDone }: { kind: 'train' | 'metro'
     const g = ref.current!.getContext('2d')!;
     g.imageSmoothingEnabled = false;
     const train = toCanvas(kind === 'train' ? trainArt(scenery === 'ice' ? 'regional' : 'intercity') : METRO_TRAIN);
-    const props = scenery === 'ice'
-      ? [toCanvas(SNOW_TREES[0]), toCanvas(SNOW_TREES[1]), toCanvas(house('snow'))]
+    const props = RIDE_LOOKS[scenery] ? RIDE_LOOKS[scenery].props.map(toCanvas)
+      : scenery === 'ice' ? [toCanvas(SNOW_TREES[0]), toCanvas(SNOW_TREES[1]), toCanvas(house('snow'))]
       : scenery === 'forest' ? [toCanvas(FOREST_TREES[0]), toCanvas(FOREST_TREES[1]), toCanvas(house('red')), toCanvas(house('blue'))]
       : [toCanvas(FOREST_TREES[0])];
     const start = performance.now();
@@ -51,33 +52,33 @@ export function Ride({ kind, scenery, title, onDone }: { kind: 'train' | 'metro'
       else finish();
     };
     raf = requestAnimationFrame(draw);
-    const key = (e: KeyboardEvent) => { if ([' ', 'Enter', 'Escape', 'z', 'e'].includes(e.key)) { e.preventDefault(); e.stopPropagation(); finish(); } };
-    window.addEventListener('keydown', key, true);
-    return () => { cancelAnimationFrame(raf); window.removeEventListener('keydown', key, true); };
+    return () => cancelAnimationFrame(raf);
   }, []);
 
   return (
-    <div class="adv-ride" onClick={finish} role="img" aria-label={title}>
+    <div class="adv-ride" role="img" aria-label={title}>
       <canvas ref={ref} width={W} height={H} />
       <div class="adv-ride-title">{title}</div>
-      <button class="adv-ride-skip" onClick={(e) => { e.stopPropagation(); finish(); }}>Skip</button>
     </div>
   );
 }
 
-const PAL = {
-  forest: { sky: ['#6ab4ec', '#bfe2fa'], cloud: '#ffffff', far: ['#8ab8a0', '#a4c8b0'], hill: ['#5aa850', '#4a9a44'], ground: '#7cc45c', groundD: '#5aa848', fence: '#9a6a3a' },
-  ice: { sky: ['#9ab4cc', '#dce8f4'], cloud: '#f4f8fc', far: ['#b8c8dc', '#ffffff'], hill: ['#dfe8f2', '#c8d4e4'], ground: '#eef4fa', groundD: '#c8d4e4', fence: '#6a5a4a' },
-  metro: { sky: ['#e8885a', '#f8d08a'], cloud: '#f8c8a0', far: ['#8a7a98', '#6a5a7a'], hill: ['#5a5a6e', '#4a4a5c'], ground: '#8a8a92', groundD: '#6a6a74', fence: '#4a4a52' },
+type Look = Omit<RideLook, 'props'>;
+const BUILT_IN: Record<string, Look> = {
+  forest: { sky: ['#6ab4ec', '#bfe2fa'], cloud: '#ffffff', far: ['#8ab8a0', '#a4c8b0'], hill: ['#5aa850', '#4a9a44'], ground: '#7cc45c', groundD: '#5aa848', fence: '#9a6a3a', farShape: 'hills' },
+  ice: { sky: ['#9ab4cc', '#dce8f4'], cloud: '#f4f8fc', far: ['#b8c8dc', '#ffffff'], hill: ['#dfe8f2', '#c8d4e4'], ground: '#eef4fa', groundD: '#c8d4e4', fence: '#6a5a4a', farShape: 'mountains' },
+  metro: { sky: ['#e8885a', '#f8d08a'], cloud: '#f8c8a0', far: ['#8a7a98', '#6a5a7a'], hill: ['#5a5a6e', '#4a4a5c'], ground: '#8a8a92', groundD: '#6a6a74', fence: '#4a4a52', farShape: 'skyline' },
 };
+const lookOf = (scenery: Scenery): Look => RIDE_LOOKS[scenery] ?? BUILT_IN[scenery] ?? BUILT_IN.forest;
 
 /** Everything behind the train, from the sky to the track. */
 function landscape(g: CanvasRenderingContext2D, s: number, scenery: Scenery, props: HTMLCanvasElement[]) {
-  const pal = PAL[scenery];
+  const pal = lookOf(scenery);
+  const shape = pal.farShape;
   const sky = g.createLinearGradient(0, 0, 0, TRACK_Y);
   sky.addColorStop(0, pal.sky[0]); sky.addColorStop(1, pal.sky[1]);
   g.fillStyle = sky; g.fillRect(0, 0, W, H);
-  if (scenery === 'metro') { g.fillStyle = '#ffe0a0'; g.beginPath(); g.arc(240, 70, 22, 0, Math.PI * 2); g.fill(); }
+  if (shape === 'skyline') { g.fillStyle = '#ffe0a0'; g.beginPath(); g.arc(240, 70, 22, 0, Math.PI * 2); g.fill(); }
   else { g.fillStyle = 'rgba(255,250,220,0.9)'; g.beginPath(); g.arc(262, 30, 10, 0, Math.PI * 2); g.fill(); }
   // clouds drifting slowly
   g.fillStyle = pal.cloud;
@@ -88,17 +89,23 @@ function landscape(g: CanvasRenderingContext2D, s: number, scenery: Scenery, pro
   // far layer: snow-capped mountains, soft hills, or the skyline with lit windows
   for (let x = 0; x < W; x++) {
     const wx = x + s * 10;
-    if (scenery === 'metro') {
+    if (shape === 'skyline') {
       const col = Math.floor(wx / 14);
       const h = 30 + hash(col, 1, 901) * 60;
       g.fillStyle = pal.far[col % 2]; g.fillRect(x, TRACK_Y - 40 - h, 1, h);
       if (Math.floor(wx) % 4 === 0) for (let y = TRACK_Y - 36 - h; y < TRACK_Y - 44; y += 5) if (hash(Math.floor(wx), y, 902) < 0.3) { g.fillStyle = '#ffe8a0'; g.fillRect(x, y, 1, 2); }
+    } else if (shape === 'sea') {
+      // the sea to the horizon, glittering
+      g.fillStyle = pal.far[0]; g.fillRect(x, TRACK_Y - 62, 1, 62);
+      if (hash(Math.floor(wx / 3), Math.floor(s * 4), 908) < 0.06) { g.fillStyle = pal.far[1]; g.fillRect(x, TRACK_Y - 60 + Math.floor(hash(Math.floor(wx), 2, 909) * 40), 2, 1); }
     } else {
-      const h = scenery === 'ice'
+      const h = shape === 'mountains'
         ? 55 + Math.abs(((wx / 50) % 2) - 1) * 50 + Math.sin(wx / 13) * 4
+        : shape === 'dunes' ? 26 + Math.sin(wx / 60) * 12 + Math.sin(wx / 23 + 1) * 5
         : 40 + Math.sin(wx / 45) * 14 + Math.sin(wx / 19) * 6;
       g.fillStyle = pal.far[0]; g.fillRect(x, TRACK_Y - 30 - h, 1, h);
-      if (scenery === 'ice' && h > 90) { g.fillStyle = pal.far[1]; g.fillRect(x, TRACK_Y - 30 - h, 1, Math.min(10, h - 90)); }
+      if (shape === 'mountains' && h > 90) { g.fillStyle = pal.far[1]; g.fillRect(x, TRACK_Y - 30 - h, 1, Math.min(10, h - 90)); }
+      if (shape === 'dunes') { g.fillStyle = pal.far[1]; g.fillRect(x, TRACK_Y - 30 - h, 1, 2); }
     }
   }
   // middle: rolling hills with the game's own trees and houses
@@ -111,7 +118,7 @@ function landscape(g: CanvasRenderingContext2D, s: number, scenery: Scenery, pro
   for (let k = -2; k < W / step + 2; k++) {
     const base = Math.floor(s * 60 / step) + k;
     const x = Math.round(k * step - ((s * 60) % step));
-    if (scenery === 'metro') {
+    if (shape === 'skyline') {
       const h = 26 + hash(base, 3, 903) * 30;
       g.fillStyle = hash(base, 4, 904) < 0.5 ? '#3e3e52' : '#4a4a60'; g.fillRect(x, TRACK_Y - 14 - h, 28, h);
       for (let wy = TRACK_Y - 10 - h; wy < TRACK_Y - 18; wy += 5) for (let wx = x + 3; wx < x + 26; wx += 5) if (hash(wx + base * 31, wy, 905) < 0.45) { g.fillStyle = '#ffd88a'; g.fillRect(wx, wy, 2, 2); }
@@ -138,7 +145,7 @@ function landscape(g: CanvasRenderingContext2D, s: number, scenery: Scenery, pro
 
 /** In front of the train: catenary poles and the wire flashing past, snow falling, birds. */
 function foreground(g: CanvasRenderingContext2D, s: number, scenery: Scenery, wire: number) {
-  const pal = PAL[scenery];
+  const pal = lookOf(scenery);
   // the near verge below the rails, rushing past fastest
   g.fillStyle = pal.groundD; g.fillRect(0, TRACK_Y + 9, W, H - TRACK_Y - 9);
   for (let x = 0; x < W; x++) {
@@ -203,22 +210,6 @@ function tunnel(g: CanvasRenderingContext2D, s: number) {
     g.fillStyle = '#1a1a1e'; g.fillRect(Math.round(x), 70, 6, 14);
     g.fillStyle = s % 1 < 0.5 ? '#3ae060' : '#1e5a2a'; g.fillRect(Math.round(x) + 1, 72, 4, 4);
     g.fillStyle = '#5a1a1a'; g.fillRect(Math.round(x) + 1, 78, 4, 4);
-  }
-  // a train passing the other way on the far track
-  const pass = (s - 1.2) / 0.5;
-  if (pass > 0 && pass < 1) {
-    const x = Math.round(W - pass * (W + 260));
-    g.fillStyle = '#b8bec8'; g.fillRect(x, 60, 240, 34);
-    g.fillStyle = '#f8e8a0'; for (let k = 0; k < 240; k += 14) g.fillRect(x + k + 3, 66, 8, 8);
-    g.fillStyle = '#2a5ad8'; g.fillRect(x, 82, 240, 3);
-  }
-  // a station flashing by
-  const flash = Math.max(0, 1 - Math.abs(s - 2.6) * 2.2);
-  if (flash > 0) {
-    g.fillStyle = `rgba(235,240,250,${flash})`; g.fillRect(0, 30, W, 100);
-    g.fillStyle = `rgba(42,90,216,${flash})`; g.fillRect(0, 70, W, 6);
-    g.fillStyle = `rgba(40,40,50,${flash * 0.8})`;
-    for (let k = 0; k < 9; k++) { const px = Math.round(((k * 37 - s * 600) % W + W) % W); g.fillRect(px, 104, 5, 14); g.fillRect(px + 1, 99, 3, 4); }
   }
   g.fillStyle = '#2a2c32'; g.fillRect(0, TRACK_Y - 2, W, 12);
   g.fillStyle = '#3a2a1e';

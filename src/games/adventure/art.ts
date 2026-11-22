@@ -10,19 +10,21 @@ export const T = 16;
  * Each country has its own look: the same map codes are drawn as grass or snow or sand, water as a pond, an icy
  * lake or the sea, forest as leafy trees, snowy pines or palms. Caves and houses draw '#' as walls.
  */
-export type Theme = 'forest' | 'snow' | 'cave' | 'beach' | 'indoor' | 'town' | 'snowtown' | 'city' | 'oldtown' | 'hall' | 'subway';
+export type Theme = 'forest' | 'snow' | 'cave' | 'beach' | 'indoor' | 'town' | 'snowtown' | 'city' | 'oldtown' | 'hall' | 'subway'
+  /** themes added by the countries in countries/ (registerTheme) */
+  | (string & {});
 export const ZEBRA = 'z';
 
-interface Pal {
+export interface Pal {
   ground: number[]; grassDark: number; grassLight: number;
   path: number; pathDark: number; pathLight: number; pathEdge: number;
   water: number; waterDeep: number; waterLight: number; waterEdge: number; foam: number;
   shadow: number;
 }
-const pal = (o: Record<keyof Pal, string | string[]>): Pal =>
+export const pal = (o: Record<keyof Pal, string | string[]>): Pal =>
   Object.fromEntries(Object.entries(o).map(([k, v]) => [k, Array.isArray(v) ? v.map(hex) : hex(v)])) as unknown as Pal;
 
-const PALS: Record<Theme, Pal> = {
+const PALS: Record<string, Pal> = {
   forest: pal({
     ground: ['#7dc75d', '#84ce62', '#8ad367', '#91d86d'], grassDark: '#62b04c', grassLight: '#a8e486',
     path: '#ead49a', pathDark: '#d2b676', pathLight: '#f6e6bb', pathEdge: '#b8975a',
@@ -83,8 +85,36 @@ const PALS: Record<Theme, Pal> = {
 /** The palette in use while a map is being drawn (set by terrain()). */
 let C: Pal & { grass: number } = { ...PALS.forest, grass: PALS.forest.ground[1] };
 let theme: Theme = 'forest';
-export function useTheme(t: Theme) { theme = t; C = { ...PALS[t], grass: PALS[t].ground[1] }; }
+export function useTheme(t: Theme) { const q = PALS[t] ?? PALS.forest; theme = t; C = { ...q, grass: q.ground[1] }; }
 export const shadowColor = () => C.shadow;
+/** The palette and theme of the map being drawn (for the countries' own terrain code). */
+export const palette = () => C;
+export const currentTheme = () => theme;
+
+/**
+ * Draws one tile in a country's own way; returns true when it drew it, false to fall back to the standard drawing
+ * (grass, path, water… in the theme's palette). `at` gives the map code of any tile, so edges can be worked out.
+ */
+export type TerrainHook = (p: Pix, ox: number, oy: number, tx: number, ty: number, at: (x: number, y: number) => string, frame: number) => boolean;
+const TERRAIN_HOOKS: Record<string, TerrainHook> = {};
+/** Trees drawn on the '#' (forest) tiles of each outdoor theme: two variants, about 48×64, crowns overlapping. */
+export const THEME_TREES: Record<string, Pix[]> = {};
+/** What the "name it" key calls a bare tile of a theme (a THINGS key), or undefined for the usual name. */
+export const TILE_THINGS: Record<string, (code: string) => string | undefined> = {};
+/**
+ * How a train ride to a country looks (Ride.tsx): sky, far hills, near hills, ground colours and the props streaming
+ * past (game sprites); `far` 'mountains' | 'hills' | 'dunes' | 'skyline' | 'sea'.
+ */
+export interface RideLook { sky: [string, string]; cloud: string; far: [string, string]; hill: [string, string]; ground: string; groundD: string; fence: string; farShape: 'mountains' | 'hills' | 'dunes' | 'skyline' | 'sea'; props: Pix[] }
+export const RIDE_LOOKS: Record<string, RideLook> = {};
+
+/** Adds a country's look: its palette, optionally its own tile drawing and the trees on its '#' tiles. */
+export function registerTheme(t: string, colors: Record<keyof Pal, string | string[]>, opts: { terrain?: TerrainHook; trees?: Pix[]; things?: (code: string) => string | undefined } = {}) {
+  PALS[t] = pal(colors);
+  if (opts.terrain) TERRAIN_HOOKS[t] = opts.terrain;
+  if (opts.trees) THEME_TREES[t] = opts.trees;
+  if (opts.things) TILE_THINGS[t] = opts.things;
+}
 
 // ---------------------------------------------------------------- terrain
 
@@ -380,6 +410,8 @@ function inlet(p: Pix, ox: number, oy: number, sx: number, sy: number, frame: nu
 
 /** Draws the terrain tile at (tx, ty) at (ox, oy); `at` reads the terrain around it (out of the map: forest). */
 export function terrain(p: Pix, ox: number, oy: number, tx: number, ty: number, at: (x: number, y: number) => string, frame: number) {
+  const hook = TERRAIN_HOOKS[theme];
+  if (hook && hook(p, ox, oy, tx, ty, at, frame)) return;
   const c = at(tx, ty);
   if (c === FOREST && (theme === 'cave' || theme === 'indoor')) return wall(p, ox, oy, tx, ty, at);
   if (theme === 'hall' || theme === 'subway') {
@@ -919,7 +951,9 @@ export const CAT: Record<'down' | 'up' | 'side', Pix[]> = {
 export type NpcKind = 'tortoise' | 'beaver' | 'frog' | 'bird' | 'owl' | 'penguin' | 'bat' | 'walrus' | 'crab'
   | 'hedgehog' | 'deer' | 'dog' | 'fox' | 'mouse' | 'badger' | 'goose' | 'rabbit' | 'squirrel'
   | 'arcticfox' | 'reindeer' | 'polarbear' | 'husky' | 'seal' | 'raccoon'
-  | 'pigeon' | 'seagull' | 'sloth' | 'parrot' | 'flamingo' | 'poodle' | 'kangaroo' | 'stork' | 'pig';
+  | 'pigeon' | 'seagull' | 'sloth' | 'parrot' | 'flamingo' | 'poodle' | 'kangaroo' | 'stork' | 'pig'
+  /** animals added by the countries in countries/ (they add their sprite to NPCS) */
+  | (string & {});
 
 export const NPCS: Record<NpcKind, Pix> = {
   tortoise: sprite({ k: '#24341c', s: '#8a6a3a', S: '#5e4626', h: '#c09a5e', g: '#8cc070', G: '#5e9448', e: '#101010', W: '#ffffff' }, [
@@ -1523,7 +1557,9 @@ export const NPCS: Record<NpcKind, Pix> = {
 export type ItemKind = 'twig_birch' | 'twig_willow' | 'twig_pine' | 'shovel'
   | 'mushroom_red' | 'mushroom_brown' | 'mushroom_yellow' | 'guestcard' | 'bread'
   | 'suitcase_ry' | 'suitcase_rb' | 'suitcase_by' | 'postcard' | 'acorn' | 'hat' | 'scarf' | 'souvenir'
-  | 'fishroll' | 'parcel' | 'daypass' | 'pc_forest' | 'pc_ice' | 'pc_metro' | 'pc_beach';
+  | 'fishroll' | 'parcel' | 'daypass' | 'pc_forest' | 'pc_ice' | 'pc_metro' | 'pc_beach'
+  /** items added by the countries in countries/ (they add their icon to ITEMS) */
+  | (string & {});
 
 function twig(leaf: (p: Pix, x: number, y: number, k: number) => void): Pix {
   const p = new Pix(16, 16);
@@ -2755,3 +2791,50 @@ DECOR.pillar = PILLAR;
 for (const n of [1, 2, 3]) DECOR[`psign${n}`] = platformSign(n);
 for (const n of [0, 1, 2, 3]) { DECOR[`poster${n}`] = poster(n); DECOR_SIZE[`poster${n}`] = [2, 1]; }
 
+
+// ---------------------------------------------------------------- for the countries' own art (countries/*-art.ts)
+
+export { grass, path, water, flowers, fence, inlet, canopy, trunk, shadowEllipse, outlined, line, poly, disc, wall, mat, track, boardwalk, tuft };
+export { ROCK_SPR, SNOW_ROCK, PALS };
+export type { Blob, Bark, Same };
+
+// ---------------------------------------------------------------- the English-speaking tourist and her phone
+
+/** Kiki the koala: a tourist from far away with a backpack and a camera, who offers the translation job. */
+NPCS.koala = sprite({ k: '#2a2a34', g: '#9a9aa8', G: '#6e6e7e', l: '#d4d4de', w: '#f4f2f8', e: '#101014', n: '#3a3040', b: '#3a8a5a', c: '#3a3a48' }, [
+  '................',
+  '.kkkk......kkkk.',
+  'kwwggk....kggwwk',
+  'kwwgggkkkkgggwwk',
+  '.kggggggggggggk.',
+  '.kggeggggggeggk.',
+  '.kggggnnnnggggk.',
+  '..kgggnnnngggk..',
+  '...kgllllllgk...',
+  '..kbbkggggkbbk..',
+  '.kbgggllllgggbk.',
+  '.kbgcccllllggbk.',
+  '.kbgcccllllggbk.',
+  '..kgggllllgggk..',
+  '..kGGk....kGGk..',
+  '...kk......kk...',
+]);
+
+ITEMS.phone = sprite({ k: '#1a1a22', s: '#3a3a48', S: '#2a2a34', g: '#7ad0f0', G: '#4aa0d0', w: '#e8faff', r: '#f04a5a' }, [
+  '................',
+  '.....kkkkkk.....',
+  '....kSSSSSSk....',
+  '....kSggggSk....',
+  '....kSgwggSk....',
+  '....kSggggSk....',
+  '....kSgGGgSk....',
+  '....kSggggSk....',
+  '....kSgggrSk....',
+  '....kSggggSk....',
+  '....kSGGGGSk....',
+  '....kSSssSSk....',
+  '....kSSSSSSk....',
+  '.....kkkkkk.....',
+  '................',
+  '................',
+]);

@@ -20,12 +20,12 @@ import { gapBefore, glue, TokenView, WordSheet } from '../../views/Reader';
 import { isPunct, joinTokens } from '../common';
 import type { Ctx } from '../types';
 import { CAFE, ITEMS, type Dir, type ItemKind } from './art';
-import { Engine, toCanvas } from './engine';
-import { Exam, makeExam, type ExamQ } from './Exam';
+import { Engine, onCanvasesWiped, toCanvas } from './engine';
+import { Exam, JOB_SIZE, makeExam, makeJob, type ExamQ } from './Exam';
 import { hasStamp, Passport } from './Passport';
 import { Ride } from './Ride';
 import { drawWorldMap, WORLD_COUNTRIES, WORLD_PLACES, WW, WH, type WPlace } from './worldmap';
-import { MAPS, newSave, PLATFORM_ROWS, PLATFORMS, ROUTE, script, type Country, type Currency, type Opt, type Save, type Step, type Warp, type Who } from './world';
+import { CURRENCY_OF, ENGLISH, MAPS, newSave, upgradeSave, PLATFORM_ROWS, arrivalPlatform, ROUTE, script, type Country, type Currency, type Opt, type Save, type Step, type Warp, type Who } from './world';
 
 const FILES = import.meta.glob<{ default: AdventureText }>('../../content/*/adventure.ts');
 
@@ -54,7 +54,7 @@ const KEYS: Record<string, Dir> = {
   ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right',
   w: 'up', s: 'down', a: 'left', d: 'right', W: 'up', S: 'down', A: 'left', D: 'right',
 };
-const A_KEYS = new Set([' ', 'Enter', 'z', 'Z', 'e', 'E']);
+const A_KEYS = new Set(['Enter', 'z', 'Z', 'e', 'E']);
 const B_KEYS = new Set(['Escape', 'x', 'X', 'Backspace']);
 
 const cafeIcons = new Map<string, string>();
@@ -62,8 +62,12 @@ const cafeIcon = (k: string) => { let u = cafeIcons.get(k); if (!u) cafeIcons.se
 const icons = new Map<ItemKind, string>();
 const itemIcon = (i: ItemKind) => { let u = icons.get(i); if (!u) icons.set(i, (u = toCanvas(ITEMS[i]).toDataURL())); return u; };
 
-/** Dev options (teleport, cheats) show on the dev server, or anywhere after localStorage "stampify.dev" = "1". */
-const DEV = import.meta.env.DEV || (() => { try { return localStorage.getItem('stampify.dev') === '1'; } catch { return false; } })();
+/**
+ * Dev options (teleport, cheats). For now (the game is a work in progress) they are on everywhere, the published
+ * app on phones included; to hide them again outside the dev server, set this back to
+ * `import.meta.env.DEV || localStorage "stampify.dev" === "1"`.
+ */
+const DEV = true;
 
 type Tab = 'bag' | 'passport' | 'map';
 
@@ -84,10 +88,12 @@ function Game({ ctx, txt }: { ctx: Ctx; txt: AdventureText }) {
   const [opt, setOpt] = useState(0);
   const [, redraw] = useState(0);
   const [exam, setExam] = useState<{ country: Country | 'all'; qs: ExamQ[]; pass: Step[]; fail: Step[] } | null>(null);
+  /** A round of the translation job (the phone from Kiki): words to put into English for the local money. */
+  const [job, setJob] = useState<ExamQ[] | null>(null);
   const [passport, setPassport] = useState<{ fresh?: Country } | null>(null);
   const [banner, setBanner] = useState<[string, string] | null>(null);
   const [fade, setFade] = useState(false);
-  const [ride, setRide] = useState<{ kind: 'train' | 'metro'; scenery: 'forest' | 'ice' | 'metro'; title: string; done: () => void } | null>(null);
+  const [ride, setRide] = useState<{ kind: 'train' | 'metro'; scenery: string; title: string; done: () => void } | null>(null);
   /** The "name it" label: the thing in front of the cat. */
   const [look, setLook] = useState<string | null>(null);
   const [dev, setDev] = useState(false);
@@ -96,8 +102,8 @@ function Game({ ctx, txt }: { ctx: Ctx; txt: AdventureText }) {
   // Each course has its own save
   const save = useMemo<Save>(() => {
     const s = lang(l).adv as Save | undefined;
-    if (!s || !MAPS[s.map]) return newSave();
-    const c = structuredClone(s);
+    if (!s) return newSave();
+    const c = upgradeSave(structuredClone(s));
     c.wallet ??= { taler: 20 }; // saves from before the wallet start with the same savings
     return c;
   }, [l]);
@@ -133,6 +139,7 @@ function Game({ ctx, txt }: { ctx: Ctx; txt: AdventureText }) {
       const s = queue.current.shift()!;
       if ('say' in s) return open({ k: 'say', key: s.say, who: s.who });
       if ('ask' in s) return open({ k: 'ask', key: s.ask, who: s.who, opts: s.opts });
+      if ('eng' in s) return open({ k: 'sys', title: ENGLISH[s.eng].title, body: ENGLISH[s.eng].body });
       if ('give' in s) { save.items.push(s.give); persist(); sfx('ok'); return open({ k: 'got', item: s.give }); }
       if ('take' in s) { const i = save.items.indexOf(s.take); if (i >= 0) save.items.splice(i, 1); persist(); continue; }
       if ('set' in s) { flag(s.set); persist(); continue; }
@@ -141,7 +148,7 @@ function Game({ ctx, txt }: { ctx: Ctx; txt: AdventureText }) {
       if ('money' in s) {
         const w = (save.wallet ||= {});
         // dev cheat: money never runs out
-        if (save.flags.includes('cheat_money')) { for (const c of ['taler', 'krone', 'kredit'] as Currency[]) w[c] = 999; persist(); continue; }
+        if (save.flags.includes('cheat_money')) { for (const c of Object.values(CURRENCY_OF)) w[c] = 999; persist(); continue; }
         w[s.money] = Math.max(0, (w[s.money] ?? 0) + s.n);
         persist();
         const cur = txt.currencies?.[s.money]?.[0] ?? s.money;
@@ -157,20 +164,20 @@ function Game({ ctx, txt }: { ctx: Ctx; txt: AdventureText }) {
         if (!MAPS[dest]) continue;
         // the train arrives at the platform whose train goes back to where it came from
         const from = save.map.replace(/^gleis_/, '');
-        const n = train ? Math.max(0, (PLATFORMS[s.to] ?? []).indexOf(from)) : 0;
+        const n = train ? arrivalPlatform(s.to, from) : 0;
         const land = train ? { x: 16, y: PLATFORM_ROWS[n].floor - 1 } : { x: 9, y: 3 };
-        const scenery = MAPS[dest].country === 'ice' ? 'ice' : MAPS[dest].country === 'metro' ? 'metro' : 'forest';
-        const name = txt.places[s.to]?.[0] ?? s.to;
+        const scenery: string = MAPS[dest].country;
+        const name = txt.places[train ? s.to : dest]?.[0] ?? s.to;
         setBox(null);
         setRide({
-          kind: s.ride, scenery, title: train ? `${txt.places[from]?.[0] ?? ''} → ${name}` : `U-Bahn → ${name}`,
+          kind: s.ride, scenery, title: `${txt.places[train ? from : save.map]?.[0] ?? ''} → ${name}`,
           done: () => { setRide(null); goTo(dest, land.x, land.y, 'down', () => next()); },
         });
         return;
       }
       if ('exam' in s) {
         setBox(null);
-        setExam({ country: s.exam, qs: makeExam(lx, txt, save, s.exam, names), pass: s.pass, fail: s.fail });
+        setExam({ country: s.exam, qs: makeExam(l, lx, txt, s.exam), pass: s.pass, fail: s.fail });
         return;
       }
       if ('stamp' in s) { setBox(null); sfx('goal'); setPassport({ fresh: ROUTE[ROUTE.indexOf(s.stamp) + 1] }); return; }
@@ -180,7 +187,7 @@ function Game({ ctx, txt }: { ctx: Ctx; txt: AdventureText }) {
         return open({
           k: 'sys', title: 'Journey complete',
           body: `You crossed ${ROUTE.length} countries, collected ${stamps} passport stamps and read ${read} lines of ${m.name}. ` +
-            'Enjoy the holiday! More countries are on their way.',
+            'Enjoy the holiday!',
           restart: true,
         });
       }
@@ -222,7 +229,9 @@ function Game({ ctx, txt }: { ctx: Ctx; txt: AdventureText }) {
     else showBanner(MAPS[save.map].country);
     const blur = () => { e.releaseAll(); e.running = false; };
     window.addEventListener('blur', blur);
-    return () => { e.stop(); ro.disconnect(); window.removeEventListener('blur', blur); persist(); stopSpeech(); };
+    // back from the background (phones wipe canvas memory there): draw everything again
+    const unwipe = onCanvasesWiped(canvas.current!, () => { e.refresh(); fit(); blur(); });
+    return () => { e.stop(); ro.disconnect(); unwipe(); window.removeEventListener('blur', blur); persist(); stopSpeech(); };
   }, []);
 
   /** A banner with the country's name when the cat arrives in it. */
@@ -302,7 +311,20 @@ function Game({ ctx, txt }: { ctx: Ctx; txt: AdventureText }) {
   };
 
   const toggleKeys = () => setKeys((k) => { try { localStorage.setItem('stampify.advKeys', k ? 'off' : 'on'); } catch { /* private mode */ } return !k; });
-  const busy = !!(box || inv || exam || passport || dev || ride);
+  const busy = !!(box || inv || exam || passport || dev || ride || job);
+
+  /** The phone: a round of the translation job, any time the cat isn't busy (once Kiki has given it the phone). */
+  const openJob = () => {
+    if (busy || !save.items.includes('phone')) return;
+    sfx('tap');
+    setJob(makeJob(l, lx, txt, save, names));
+  };
+  const jobPay = (n: number) => {
+    const cur = CURRENCY_OF[MAPS[save.map].country];
+    const pay = n + (n === JOB_SIZE ? 1 : 0);
+    const name = txt.currencies?.[cur]?.[1] ?? cur;
+    return pay ? `${n} of ${JOB_SIZE} right${n === JOB_SIZE ? ' (perfect: +1 bonus)' : ''}. Kiki pays you ${pay} ${name}.` : 'No right answers this time, so no pay. Try another round!';
+  };
 
   // Keyboard
   useEffect(() => {
@@ -310,9 +332,10 @@ function Game({ ctx, txt }: { ctx: Ctx; txt: AdventureText }) {
       if (ev.target instanceof HTMLInputElement || ev.target instanceof HTMLTextAreaElement) return;
       const e = eng.current;
       if (!e) return;
-      if (ev.key === 'Shift') e.running = true;
+      // Space: hold to run (only runs; talking is E / Enter)
+      if (ev.key === ' ') { ev.preventDefault(); e.running = true; return; }
       if (sel !== null) { if (ev.key === 'Escape') setSel(null); return; }
-      if (exam || ride) return;
+      if (exam || ride || job) return;
       if (passport) { if (A_KEYS.has(ev.key) || B_KEYS.has(ev.key)) { ev.preventDefault(); closePassport(); } return; }
       if (dev) { if (ev.key === 'Escape') setDev(false); return; }
       const k = ev.key.toLowerCase();
@@ -349,9 +372,10 @@ function Game({ ctx, txt }: { ctx: Ctx; txt: AdventureText }) {
       else if (k === 'i') setInv('bag');
       else if (k === 'm') setInv('map');
       else if (k === 'h') toggleKeys();
+      else if (k === 'p') openJob();
     };
     const up = (ev: KeyboardEvent) => {
-      if (ev.key === 'Shift' && eng.current) eng.current.running = false;
+      if (ev.key === ' ' && eng.current) eng.current.running = false;
       const d = KEYS[ev.key];
       if (d) eng.current?.release(d);
     };
@@ -361,7 +385,7 @@ function Game({ ctx, txt }: { ctx: Ctx; txt: AdventureText }) {
   });
 
   // Overlays stop the cat
-  useEffect(() => { const e = eng.current; if (!e || box) return; e.paused = !!(inv || dev || passport || exam || ride); if (e.paused) e.releaseAll(); }, [inv, dev, passport, exam, ride]);
+  useEffect(() => { const e = eng.current; if (!e || box) return; e.paused = !!(inv || dev || passport || exam || ride || job); if (e.paused) e.releaseAll(); }, [inv, dev, passport, exam, ride, job]);
 
   // Touch pad: one element, the direction follows the finger (sliding from one arrow to another works)
   const padDir = useRef<Dir | null>(null);
@@ -426,6 +450,7 @@ function Game({ ctx, txt }: { ctx: Ctx; txt: AdventureText }) {
         <button class="icon-btn plain" onClick={() => !box && setInv(inv ? null : 'bag')} aria-label="Inventory" aria-pressed={!!inv}>
           <Icon name="bag" />{save.items.length > 0 && <span class="adv-count">{save.items.length}</span>}
         </button>
+        {save.items.includes('phone') && <button class="icon-btn plain adv-phone" onClick={openJob} aria-label="Translation job (phone)"><img src={itemIcon('phone')} alt="" width={24} height={24} /></button>}
         <button class="icon-btn plain" onClick={() => !box && open({ ...intro(), restart: true })} aria-label="How to play"><Icon name="help" /></button>
       </div>
 
@@ -435,10 +460,11 @@ function Game({ ctx, txt }: { ctx: Ctx; txt: AdventureText }) {
         {keys && !busy && (
           <div class="adv-keys desktop-only" aria-label="Keys">
             <div><kbd>←</kbd><kbd>↑</kbd><kbd>↓</kbd><kbd>→</kbd> / <kbd>WASD</kbd><span>walk</span></div>
-            <div><kbd>Shift</kbd><span>hold to run</span></div>
-            <div><kbd>Space</kbd> / <kbd>E</kbd><span>talk, look, next</span></div>
+            <div><kbd>Space</kbd><span>hold to run</span></div>
+            <div><kbd>E</kbd> / <kbd>Enter</kbd><span>talk, look, next</span></div>
             <div><kbd>Q</kbd><span>name the thing in front</span></div>
             <div><kbd>I</kbd><span>inventory</span> <kbd>M</kbd><span>map</span></div>
+            {save.items.includes('phone') && <div><kbd>P</kbd><span>phone: translation job</span></div>}
             <div><kbd>Esc</kbd> / <kbd>X</kbd><span>back</span></div>
             <div><kbd>H</kbd><span>hide these keys</span></div>
           </div>
@@ -507,6 +533,13 @@ function Game({ ctx, txt }: { ctx: Ctx; txt: AdventureText }) {
         <DevPanel txt={txt} save={save} engine={eng.current!} onClose={() => setDev(false)}
           go={(id) => { setDev(false); const sp = MAPS[id].spawn; goTo(id, sp.x, sp.y, sp.dir); }}
           apply={(f) => { f(); persist(); redraw((n) => n + 1); }} reset={() => { setDev(false); reset(); }} />
+      )}
+      {job && (
+        <Exam l={l} place={txt.places[save.map] ?? [save.map, save.map]} qs={job} job={{ pay: (n) => jobPay(n) }} onDone={(_, n) => {
+          setJob(null);
+          const pay = n + (n === JOB_SIZE ? 1 : 0);
+          if (pay) run([{ money: CURRENCY_OF[MAPS[save.map].country], n: pay }]);
+        }} />
       )}
       {exam && (
         <Exam l={l} place={exam.country === 'all' ? txt.places.school ?? ['School', 'School'] : txt.places[exam.country] ?? [exam.country, exam.country]} qs={exam.qs} onDone={(passed) => {

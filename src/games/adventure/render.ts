@@ -4,7 +4,7 @@
  * order, by the y of its base, so crowns and roofs cover the cat when it walks behind them.
  * Drawing goes through a `Blit` function so the browser (canvas) and the preview script (PNG) share this code.
  */
-import { BIG_TREES, BRAMBLE, BRIDGE, DECOR, GATE_H, METRO_TRAIN, trainArt, useStopColor, LAMP, METRO, SHIP, stall, doorArt, CAT, CAVE, CHAIR, DESK, DRIFT, flag, fountain, TOWNGATE, wheel, FOREST, FOREST_TREES, GATE, house, ITEM_ON_GROUND, LILY_PAD, LOG, NPCS, PALMS, PLANT, SHADOW, SIGN, SNOW_TREES, T, TALL, tallGrass, terrain, useDistrict, useTheme, cityFacing, type Dir, type ItemKind, type Roof, type Theme } from './art';
+import { BIG_TREES, BRAMBLE, BRIDGE, DECOR, GATE_H, METRO_TRAIN, trainArt, useStopColor, LAMP, METRO, SHIP, stall, doorArt, CAT, CAVE, CHAIR, DESK, DRIFT, flag, fountain, TOWNGATE, wheel, FOREST, FOREST_TREES, GATE, house, ITEM_ON_GROUND, LILY_PAD, LOG, NPCS, PALMS, PLANT, SHADOW, SIGN, SNOW_TREES, T, TALL, THEME_TREES, tallGrass, terrain, useDistrict, useTheme, cityFacing, type Dir, type ItemKind, type Roof, type Theme } from './art';
 import { hash, Pix } from './pix';
 import { COUNTRIES, present, size, type Country, type MapDef, type Obj, type Save } from './world';
 
@@ -37,6 +37,7 @@ const mod = (a: number, n: number) => ((a % n) + n) % n;
 
 /** Trees of each outdoor look (caves and houses draw '#' as walls instead). */
 const TREES: Partial<Record<Theme, Pix[]>> = { forest: FOREST_TREES, snow: SNOW_TREES, beach: PALMS, town: FOREST_TREES, snowtown: SNOW_TREES, city: FOREST_TREES, oldtown: FOREST_TREES };
+const treesOf = (t: Theme) => THEME_TREES[t] ?? TREES[t];
 
 /** A forest tile no full tree fits on: a small tree, the big one at half size. */
 const bushes = new Map<Pix, Pix>();
@@ -65,7 +66,7 @@ export function buildWorld(m: MapDef): World {
   useTheme(m.theme);
   useDistrict(m.id);
   if (m.tint) useStopColor(m.tint);
-  const trees = TREES[m.theme];
+  const trees = treesOf(m.theme);
   const ground = [0, 1].map((frame) => {
     const p = new Pix((W + 2 * MARGIN) * T, (H + 2 * MARGIN) * T);
     for (let y = -MARGIN; y < H + MARGIN; y++) for (let x = -MARGIN; x < W + MARGIN; x++) terrain(p, (x + MARGIN) * T, (y + MARGIN) * T, x, y, at, frame);
@@ -108,7 +109,7 @@ export function buildWorld(m: MapDef): World {
     else if (o.k === 'metro') tall.push({ p: METRO, x: o.x * T, y: base - METRO.h, base });
     else if (o.k === 'stall') { const st = once(`stall:${o.color}`, () => stall(o.color)); tall.push({ p: st, x: o.x * T, y: base - st.h, base }); }
     else if (o.k === 'train') {
-      const t = o.kind === 'metro' ? METRO_TRAIN : once(`train:${o.dest}`, () => trainArt(o.dest === 'none' ? 'out' : o.dest === 'frostburg' ? 'regional' : 'intercity'));
+      const t = o.kind === 'metro' ? METRO_TRAIN : once(`train:${o.dest}`, () => trainArt(o.dest === 'none' ? 'out' : o.dest === 'south' ? 'regional' : 'intercity'));
       tall.push({ p: t, x: o.x * T, y: base - t.h, base });
     }
     else if (o.k === 'lamp') tall.push({ p: LAMP, x: o.x * T, y: base - LAMP.h, base });
@@ -147,6 +148,8 @@ export function drawWorld(blit: Blit, m: MapDef, w: World, s: Save, me: Actor, t
       const shake = chomp ? Math.round(Math.sin(time / 30)) : 0;
       list.push({ base: (o.y + 1) * T, order: 1, draw: () => blit(BRAMBLE, ox + o.x * T + shake, oy + o.y * T) });
     }
+    // a country's own roadblock (fallen rocks, a rope bridge…): its art from DECOR, gone once its quest is done
+    if (o.k === 'block' && DECOR[o.art]) { const d = DECOR[o.art], base = (o.y + size(o).h) * T; list.push({ base, order: 1, draw: () => blit(d, ox + o.x * T, oy + base - d.h) }); }
     if (o.k === 'towngate') list.push({ base: (o.y + 2) * T, order: 1, draw: () => blit(TOWNGATE, ox + o.x * T, oy + o.y * T) });
     // the lowered bridge lies flat on the water: drawn before anything standing on it
     if (o.k === 'bridge') list.push({ base: -1e9, order: 0, draw: () => blit(BRIDGE, ox + o.x * T, oy + o.y * T) });

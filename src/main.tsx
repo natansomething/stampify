@@ -57,11 +57,11 @@ function applyTheme() {
 type Tab = 'today' | 'tools' | 'guide' | 'practice' | 'words';
 const TABS: { id: Tab; name: string; path: string }[] = [
   { id: 'today', name: 'Today', path: '' },
+  { id: 'practice', name: 'Practice', path: '/practice' },
   // Tools: Analyse sentences & captions, and Watch
   { id: 'tools', name: 'Tools', path: '/tools' },
   // Resources: the guidebook, cheat sheets and other extras; only for languages that have some (route kept as /guide)
   { id: 'guide', name: 'Resources', path: '/guide' },
-  { id: 'practice', name: 'Practice', path: '/practice' },
   { id: 'words', name: 'Words', path: '/words' },
 ];
 

@@ -5,11 +5,19 @@
  *
  * The journey: the cat travels as a tourist through fictional countries. Each country ends at a border office,
  * where a short language exam on the words met in that country earns a passport stamp and opens the barrier.
- * Waldland (forest) → Frostland (snow, ice cave) → Sonnenküste (beach: the holiday at the end).
+ * Woodland → Frostland → Rockland → Rainforest → Megacity → Desert → Swamp → Sun Coast (the holiday at the end).
+ * The first three are here; the others are country modules in countries/ (their own maps, scripts and art, joined in
+ * by COUNTRY_MODULES below).
  */
 import { DECOR_SIZE, type Dir, type ItemKind, type NpcKind, type Roof, type Theme, type TreeKind } from './art';
+import beach from './countries/beach';
+import coreHomes from './countries/core-homes';
+import desert from './countries/desert';
+import jungle from './countries/jungle';
+import mountains from './countries/mountains';
+import swamp from './countries/swamp';
 
-export type Country = 'forest' | 'ice' | 'metro' | 'beach';
+export type Country = 'forest' | 'ice' | 'mountains' | 'jungle' | 'metro' | 'desert' | 'swamp' | 'beach';
 
 export const COUNTRIES: Record<Country, {
   /** Flag colours (top, bottom). */
@@ -34,10 +42,15 @@ export const COUNTRIES: Record<Country, {
     flag: ['#2a2a3a', '#e03a8a'], ink: '#7a3aa8',
     lines: ['pigeon.', 'seagull.', 'sloth.', 'mexch.', 'cred.', 'metro.', 'cafe.', 'courier.', 'pig.', 'school.', 'flamingo.', 'house.cafe', 'house.lost', 'house.museum', 'house.hotel', 'house.tower', 'house.courier', 'house.school', 'house.station', 'sign.central', 'sign.oldtown', 'sign.harbour', 'sign.market', 'sign.towers', 'sign.metromap', 'sign.border3', 'flag.metro', 'stall.', 'decor.', 'pass_c', 'mp_', 'board.station_central', 'board.metro', 'hanna_mc.', 'greta_mc.', 'fritz_mc.', 'mia_mc.', 'frieda_mc.', 'rieke_mc.'],
   },
+  // filled in by their country modules (countries/*.ts)
+  mountains: { flag: ['#8a8a96', '#c0392b'], ink: '#6a5a4a', lines: [] },
+  jungle: { flag: ['#1e7a3a', '#f0c020'], ink: '#1e6a3a', lines: [] },
+  desert: { flag: ['#e8b048', '#c05a2a'], ink: '#b8602a', lines: [] },
+  swamp: { flag: ['#4a6a3a', '#8aa0a0'], ink: '#3e5a40', lines: [] },
   beach: { flag: ['#f09a30', '#30b8c0'], ink: '#c0392b', lines: ['crab.', 'chair.', 'sign.beach', 'end.'] },
 };
 /** The countries in travel order; the stamp for entering country i is earned at the border of country i-1. */
-export const ROUTE: Country[] = ['forest', 'ice', 'metro', 'beach'];
+export const ROUTE: Country[] = ['forest', 'ice', 'mountains', 'jungle', 'metro', 'desert', 'swamp', 'beach'];
 
 export type Obj =
   | { k: 'house'; id: string; x: number; y: number; roof: Roof }
@@ -55,9 +68,14 @@ export type Obj =
   /** A market stall (2×1); talking to it talks to the vendor behind it, if any. */
   | { k: 'stall'; id: string; x: number; y: number; color: string; vendor?: string }
   /** A train or metro standing at a platform (12×2 / 10×2). */
-  | { k: 'train'; id: string; x: number; y: number; kind: 'train' | 'metro'; /** mainline: the station city it goes to, or 'none' (out of service) */ dest?: string }
+  | { k: 'train'; id: string; x: number; y: number; kind: 'train' | 'metro'; /** mainline: 'north' | 'south' | 'none' (out of service) */ dest?: string }
   /** Street furniture, parked cars… (art: a key of DECOR in art.ts). */
   | { k: 'decor'; id: string; x: number; y: number; art: string }
+  /**
+   * A country's own roadblock (fallen rocks, a broken rope bridge, a sleeping camel…): drawn from DECOR[art], its
+   * footprint DECOR_SIZE[art]; gone once the flag in `until` is set. Talking to it runs the country's script by id.
+   */
+  | { k: 'block'; id: string; x: number; y: number; art: string; until: string }
   /** The border barrier: open once the country's exam is passed. */
   | { k: 'gate'; id: string; x: number; y: number; country: Country; /** across a north-south road (2×1) */ across?: boolean }
   | { k: 'sign'; id: string; x: number; y: number }
@@ -104,7 +122,7 @@ export function size(o: Obj): { w: number; h: number } {
   if (o.k === 'fountain' || o.k === 'metro') return { w: 2, h: 2 };
   if (o.k === 'stall') return { w: 2, h: 1 };
   if (o.k === 'train') return o.kind === 'train' ? { w: 12, h: 2 } : { w: 10, h: 2 };
-  if (o.k === 'decor') { const [w, h] = DECOR_SIZE[o.art] ?? [1, 1]; return { w, h }; }
+  if (o.k === 'decor' || o.k === 'block') { const [w, h] = DECOR_SIZE[o.art] ?? [1, 1]; return { w, h }; }
   if (o.k === 'ship') return { w: 3, h: 2 };
   if (o.k === 'cave') return { w: 3, h: 2 };
   if (o.k === 'desk') return { w: 5, h: 1 };
@@ -169,6 +187,7 @@ const VILLAGE: MapDef = {
     { k: 'npc', id: 'beaver', x: 26, y: 12, npc: 'beaver' },
     { k: 'npc', id: 'frog', x: 3, y: 16, npc: 'frog', pad: true },
     { k: 'npc', id: 'bird', x: 19, y: 14, npc: 'bird' },
+    { k: 'npc', id: 'kiki', x: 16, y: 8, npc: 'koala' },
   ],
   warps: edge(31, [10, 11], 'sonnenwald', 1, [15, 16], 'right'),
 };
@@ -724,7 +743,7 @@ const BORDER_ICE: MapDef = {
   ],
   warps: [
     ...edge(29, [9, 10], 'frostburg', 1, [12, 13], 'right'),
-    ...edge(0, [9, 10], 'central', 1, [14, 15], 'right'),
+    ...edge(0, [9, 10], '@next', 0, [0, 0], 'left'),
     { x: 14, y: 6, to: 'office_ice', tx: 5, ty: 7, dir: 'up', door: true },
   ],
 };
@@ -926,17 +945,37 @@ const BORDERM_ROWS = [
 
 // ---------------------------------------------------------------- stations
 
+/** The railway's stations, south to north (one line straight up the middle of the world). */
+export const RAIL = ['lindenburg', 'frostburg', 'central', 'oasis', 'sunport'] as const;
+/** The country each station city is in. */
+export const RAIL_COUNTRY: Record<string, Country> = { lindenburg: 'forest', frostburg: 'ice', central: 'metro', oasis: 'desert', sunport: 'beach' };
+export type Direction = 'north' | 'south' | 'none';
 /**
- * Which train stands at which platform in each station: the station city it goes to, or 'none' for the train
- * that's out of service. Different in every station, so the departure board has to be read.
+ * Which train stands at which platform in each station: northbound (to Sunport), southbound (to Lindenburg), or out
+ * of service. Different in every station, so the departure board has to be read; a ticket to a city is good on any
+ * train going its way.
  */
-export const PLATFORMS: Record<string, [string, string, string]> = {
-  lindenburg: ['frostburg', 'central', 'none'],
-  frostburg: ['central', 'none', 'lindenburg'],
-  central: ['none', 'lindenburg', 'frostburg'],
+export const PLATFORMS: Record<string, [Direction, Direction, Direction]> = {
+  lindenburg: ['none', 'north', 'none'],
+  frostburg: ['north', 'none', 'south'],
+  central: ['south', 'north', 'none'],
+  oasis: ['none', 'south', 'north'],
+  sunport: ['none', 'none', 'south'],
 };
+/** Which way a city lies from another along the line. */
+export const directionTo = (from: string, to: string): Direction => {
+  const a = RAIL.indexOf(from as (typeof RAIL)[number]), b = RAIL.indexOf(to as (typeof RAIL)[number]);
+  return a < 0 || b < 0 || a === b ? 'none' : b > a ? 'north' : 'south';
+};
+/** The platform a train coming from `from` stops at in `city` (the one of its direction; a terminus: the other). */
+export function arrivalPlatform(city: string, from: string): number {
+  const d = directionTo(from, city);
+  const p = PLATFORMS[city] ?? ['none', 'north', 'south'];
+  const i = p.indexOf(d);
+  return i >= 0 ? i : Math.max(0, p.indexOf(d === 'north' ? 'south' : 'north'));
+}
 /** The colour of each station's underpass tiles. */
-const STATION_TINT: Record<string, string> = { lindenburg: '#2e7a3a', frostburg: '#2a5aa8', central: '#7a3aa8' };
+const STATION_TINT: Record<string, string> = { lindenburg: '#2e7a3a', frostburg: '#2a5aa8', central: '#7a3aa8', oasis: '#c8862a', sunport: '#e0603a' };
 /** Platform n (0-2): the row of its floor next to the stairs, and the row of its track. */
 export const PLATFORM_ROWS = [{ floor: 5, track: 1 }, { floor: 10, track: 6 }, { floor: 15, track: 11 }];
 
@@ -1030,7 +1069,7 @@ function station(city: string, country: Country, street: string, sx: number, sy:
     ],
     objs: [
       ...PLATFORMS[city].flatMap((dest, n): Obj[] => [
-        { k: 'train', id: `train_${city}_${n + 1}`, x: 9, y: PLATFORM_ROWS[n].track, kind: 'train', dest },
+        { k: 'train', id: `train_${city}_${n + 1}`, x: 9, y: PLATFORM_ROWS[n].track, kind: 'train', dest: dest === 'none' ? 'none' : dest },
         { k: 'decor', id: `psign_${n + 1}`, x: 3, y: PLATFORM_ROWS[n].floor - 1, art: `psign${n + 1}` },
         { k: 'decor', id: `psign_${n + 1}b`, x: 26, y: PLATFORM_ROWS[n].floor - 1, art: `psign${n + 1}` },
         { k: 'decor', id: `bench_${n}`, x: 19, y: PLATFORM_ROWS[n].floor, art: 'bench' },
@@ -1100,7 +1139,7 @@ const CENTRAL = city('central', 'city', CENTRAL_ROWS, { x: 1, y: 15, dir: 'right
   { k: 'npc', id: 'fritz_mc', x: 18, y: 12, npc: 'frog' }, { k: 'npc', id: 'rieke_mc', x: 28, y: 18, npc: 'deer' },
   { k: 'npc', id: 'pigeon', x: 14, y: 12, npc: 'pigeon' },
 ], [
-  ...edge(0, [14, 15, 16], 'border_ice', 1, [9, 10, 10], 'right'),
+  ...edge(0, [14, 15, 16], '@prev', 0, [0, 0, 0], 'left'),
   ...edge(39, [14, 15, 16], 'harbour', 1, [14, 15, 16], 'right'),
   { x: 9, y: 0, to: 'oldtown', tx: 9, ty: 28, dir: 'up' }, { x: 10, y: 0, to: 'oldtown', tx: 10, ty: 28, dir: 'up' },
   { x: 20, y: 8, to: 'station_central', tx: 11, ty: 13, dir: 'up', door: true },
@@ -1163,7 +1202,7 @@ const TOWERS = city('towers', 'city', TOWERS_ROWS, { x: 1, y: 15, dir: 'right' }
   { k: 'door', id: 'door_tower', x: 20, y: 11, sign: 'tower' },
   { k: 'metro', id: 'metro_towers', x: 32, y: 12, stop: 'towers' },
   { k: 'lamp', id: 'lamp', x: 9, y: 12 }, { k: 'lamp', id: 'lamp', x: 23, y: 12 },
-  { k: 'decor', id: 'bikes', x: 16, y: 12, art: 'bikes' }, { k: 'decor', id: 'bench', x: 20, y: 12, art: 'bench' },
+  { k: 'decor', id: 'bikes', x: 16, y: 12, art: 'bikes' }, { k: 'decor', id: 'bench', x: 23, y: 12, art: 'bench' },
   { k: 'decor', id: 'busstop', x: 30, y: 17, art: 'busstop' }, { k: 'decor', id: 'bin', x: 25, y: 13, art: 'bin' },
   { k: 'decor', id: 'car1', x: 5, y: 14, art: 'car_black' }, { k: 'decor', id: 'car2', x: 35, y: 16, art: 'car_white' }, { k: 'decor', id: 'car3', x: 19, y: 16, art: 'car_red' },
   { k: 'npc', id: 'frieda_mc', x: 24, y: 12, npc: 'fox' },
@@ -1184,7 +1223,7 @@ const BORDER_METRO: MapDef = {
     { k: 'gate', id: 'gate_metro', x: 28, y: 14, country: 'metro' },
   ], [
     ...edge(0, [14, 15], 'towers', 38, [14, 15], 'left'),
-    ...edge(39, [14, 15], 'shellbay', 1, [7, 8], 'right'),
+    ...edge(39, [14, 15], '@next', 0, [0, 0], 'right'),
     { x: 15, y: 11, to: 'office_metro', tx: 5, ty: 7, dir: 'up', door: true },
   ]),
 };
@@ -1241,35 +1280,105 @@ const CAVE: MapDef = {
   ],
 };
 
-const BEACH: MapDef = {
-  id: 'shellbay', at: 'shellbay', country: 'beach', theme: 'beach', spawn: { x: 2, y: 7, dir: 'right' },
-  rows: [
-    '############################',
-    '############################',
-    '##......................~~~~',
-    '##..y.................~~~~~~',
-    '##.....................~~~~~',
-    '##...........r.........~~~~~',
-    '##......................~~~~',
-    '::::::::::::.............~~~',
-    '::::::::::::..............~~',
-    '##.....................~~~~~',
-    '##..w.................~~~~~~',
-    '##..................~~~~~~~~',
-    '##.........y......~~~~~~~~~~',
-    '##..............~~~~~~~~~~~~',
-    '##...........~~~~~~~~~~~~~~~',
-    '##.......~~~~~~~~~~~~~~~~~~~',
-    '~~~~~~~~~~~~~~~~~~~~~~~~~~~~',
-    '~~~~~~~~~~~~~~~~~~~~~~~~~~~~',
-  ],
-  objs: [
-    { k: 'npc', id: 'crab', x: 13, y: 9, npc: 'crab' },
-    { k: 'chair', id: 'chair', x: 19, y: 9 },
-    { k: 'sign', id: 'sign_beach', x: 9, y: 6 },
-  ],
-  warps: edge(0, [7, 8], 'border_metro', 38, [14, 15], 'left'),
+// ---------------------------------------------------------------- country modules (countries/*.ts)
+
+/**
+ * Where the cat arrives in a country from a neighbour: the map and the tiles of its edge (one per row or column of
+ * the edge warps that lead there, in order), and which way it then faces.
+ */
+export interface Arrival { map: string; cells: [number, number][]; dir: Dir }
+
+/** What the world gives a country module to build with (helpers that live here). */
+export interface Kit {
+  has(s: Save, flag: string): boolean;
+  money(s: Save, c: Currency): number;
+  /** Warps along a map edge: one per row in `ys`, landing on the matching row in `tys`. */
+  edge(x: number, ys: number[], to: string, tx: number, tys: number[], dir: Dir): Warp[];
+  /** A one-room interior (11×9, indoor theme) with `clerk` behind a counter; the door leads back to (bx, by) on `back`. */
+  interior(id: string, country: Country, clerk: NpcKind, back: string, bx: number, by: number, at: string): MapDef;
+  /** A border office: an interior with the country's flag; its clerk runs the exam (script: kit.clerk). */
+  office(id: string, country: Country, clerk: NpcKind, back: string, bx: number, by: number, at: string): MapDef;
+  /** A train station (hall, underpass, platforms) for a city of RAIL; the hall's exit leads to (sx, sy) on `street`. */
+  station(city: string, country: Country, street: string, sx: number, sy: number, people: [string, NpcKind, number, number, 'hall' | 'gleis'][]): MapDef[];
+  /** The border officer's script: introduction, then the exam; lines `<who>.hello1/hello2/ready/pass/gate/fail/later/done`. */
+  clerk(country: Country, who: string, s: Save): Step[];
+  clerkLines(who: string): string[];
+  /** The line keys of a resident (an NPC whose id starts with 'res_'): `<id>.1`, `.2` on the first visit, `.3` later. */
+  residentLines(id: string): string[];
+}
+
+/**
+ * A country built in its own file (countries/<id>.ts with its art in countries/<id>-art.ts). Map ids must be
+ * unique across the world; its border map is `border_<country>` and its office `office_<country>`. Warps to the
+ * neighbouring countries use the placeholders '@prev' and '@next' (tx/ty are then filled in from their arrivals).
+ */
+export interface CountryModule {
+  country: Country;
+  flag: [string, string];
+  ink: string;
+  /** Line key prefixes of the country (exam bookkeeping, like COUNTRIES[c].lines). */
+  lines: string[];
+  maps: MapDef[];
+  /** Arriving from the previous country (through its border) and coming back from the next one. */
+  entry: Arrival;
+  exit: Arrival;
+  /** The country's scripts: steps for an object on its maps, or undefined to fall back to the shared ones. */
+  script(o: Obj, s: Save): Step[] | undefined;
+  /** Every line key its scripts can say (the text check makes each language write them all). */
+  lineKeys: string[];
+  /** The English name of each of its maps (PLACE_EN). */
+  places: Record<string, string>;
+  npcKinds: NpcKind[];
+  /** "Name it" keys for its things (each needs a line `thing.<key>`). */
+  things: string[];
+}
+
+const KIT: Kit = {
+  has: (s, f) => has(s, f),
+  money: (s, c) => money(s, c),
+  edge: (x, ys, to, tx, tys, dir) => edge(x, ys, to, tx, tys, dir),
+  interior: (id, country, c, back, bx, by, at) => interior(id, country, c, back, bx, by, at),
+  office: (id, country, c, back, bx, by, at) => office(id, country, c, back, bx, by, at),
+  station: (city, country, street, sx, sy, people) => station(city, country, street, sx, sy, people),
+  clerk: (country, who, s) => clerk(country, who, s),
+  clerkLines: (w) => clerkLines(w),
+  residentLines: (id) => [1, 2, 3].map((n) => `${id}.${n}`),
 };
+
+/**
+ * More for the countries that live in this file (Woodland, Frostland, the Megacity): maps (house interiors), warps
+ * to add to maps here (house doors), their line keys, English place names and "name it" things.
+ */
+export interface Extension { maps: MapDef[]; addWarps: { map: string; warp: Warp }[]; lineKeys: string[]; places: Record<string, string>; things: string[] }
+const EXTENSIONS: Extension[] = [coreHomes(KIT)];
+
+/** The countries built as modules, in travel order. */
+const MODULES: CountryModule[] = [mountains, jungle, desert, swamp, beach].map((make) => make(KIT));
+for (const m of MODULES) COUNTRIES[m.country] = { flag: m.flag, ink: m.ink, lines: m.lines };
+
+/** How the countries here join their neighbours (the modules say it themselves). */
+const ARRIVALS: Partial<Record<Country, { entry: Arrival; exit: Arrival }>> = {
+  ice: { entry: { map: 'snowfield', cells: [], dir: 'right' }, exit: { map: 'border_ice', cells: [[1, 9], [1, 10]], dir: 'right' } },
+  metro: { entry: { map: 'central', cells: [[1, 14], [1, 15], [1, 16]], dir: 'right' }, exit: { map: 'border_metro', cells: [[38, 14], [38, 15]], dir: 'left' } },
+  ...Object.fromEntries(MODULES.map((m) => [m.country, { entry: m.entry, exit: m.exit }])),
+};
+
+/** Fills in the '@prev' / '@next' warps between countries. */
+function linkCountries() {
+  for (const m of Object.values(MAPS)) {
+    for (const kind of ['@prev', '@next'] as const) {
+      const ws = m.warps.filter((w) => w.to === kind);
+      if (!ws.length) continue;
+      const i = ROUTE.indexOf(m.country) + (kind === '@next' ? 1 : -1);
+      const a = kind === '@next' ? ARRIVALS[ROUTE[i]]?.entry : ARRIVALS[ROUTE[i]]?.exit;
+      if (!a || !MAPS[a.map] || !a.cells.length) { m.warps = m.warps.filter((w) => w.to !== kind); continue; }
+      ws.sort((p, q) => p.y - q.y || p.x - q.x).forEach((w, k) => {
+        const [tx, ty] = a.cells[Math.min(k, a.cells.length - 1)];
+        Object.assign(w, { to: a.map, tx, ty, dir: a.dir });
+      });
+    }
+  }
+}
 
 export const MAPS: Record<string, MapDef> = Object.fromEntries([
   VILLAGE, SONNENWALD, LINDENBURG, interior('tourist_info', 'forest', 'fox', 'lindenburg', 5, 7, 'lindenburg'),
@@ -1286,8 +1395,11 @@ export const MAPS: Record<string, MapDef> = Object.fromEntries([
   metroStop('market', 'market', 26, 20, ['reindeer']), metroStop('towers', 'towers', 32, 14, ['kangaroo']),
   HARBOUR, MARKET, TOWERS, interior('courier', 'metro', 'kangaroo', 'towers', 6, 12, 'towers'),
   BORDER_METRO, office('office_metro', 'metro', 'flamingo', 'border_metro', 15, 12, 'border_metro'),
-  BEACH,
+  ...MODULES.flatMap((m) => m.maps),
+  ...EXTENSIONS.flatMap((e) => e.maps),
 ].map((m) => [m.id, m]));
+for (const e of EXTENSIONS) for (const { map, warp } of e.addWarps) MAPS[map]?.warps.push(warp);
+linkCountries();
 
 // ---------------------------------------------------------------- game state
 
@@ -1305,16 +1417,28 @@ export interface Save {
 }
 
 /** Currencies: talers in Woodland, crowns in Frostland, more to come. */
-export type Currency = 'taler' | 'krone' | 'kredit';
-export const CURRENCY_OF: Partial<Record<Country, Currency>> = { forest: 'taler', ice: 'krone', metro: 'kredit' };
+export type Currency = 'taler' | 'krone' | 'gulden' | 'bean' | 'kredit' | 'dinar' | 'pearl' | 'sol';
+/** Every country has its own money: talers, crowns, guilders, cocoa beans, credits, dinars, pearls, sols. */
+export const CURRENCY_OF: Record<Country, Currency> = { forest: 'taler', ice: 'krone', mountains: 'gulden', jungle: 'bean', metro: 'kredit', desert: 'dinar', swamp: 'pearl', beach: 'sol' };
 export const money = (s: Save, c: Currency) => s.wallet?.[c] ?? 0;
 
-/** Station cities with their station hall; `needs` the stamp to travel there. */
-export const STATIONS_BUILT: { id: string; hall: string; needs?: string }[] = [
-  { id: 'lindenburg', hall: 'station_lindenburg' },
-  { id: 'frostburg', hall: 'station_frostburg', needs: 'stamp_forest' },
-  { id: 'central', hall: 'station_central', needs: 'stamp_ice' },
-];
+/** Station cities whose station is built, with their hall; `needs` the stamp to travel there (its country's). */
+export const STATIONS_BUILT = (): { id: string; hall: string; needs?: string }[] => RAIL.filter((c) => MAPS[`station_${c}`]).map((c) => {
+  const i = ROUTE.indexOf(RAIL_COUNTRY[c]);
+  return { id: c, hall: `station_${c}`, needs: i > 0 ? `stamp_${ROUTE[i - 1]}` : undefined };
+});
+
+/**
+ * Brings an older save up to date. The journey used to go Frostland → Megacity directly; a cat that crossed that
+ * border before Rockland and the Rainforest existed gets their stamps, so it stays in the Megacity.
+ */
+export function upgradeSave(s: Save): Save {
+  if (has(s, 'stamp_ice') && !has(s, 'stamp_mountains') && s.flags.some((f) => /^visited_(central|oldtown|harbour|market|towers|metro_|station_central|border_metro)/.test(f))) {
+    s.flags.push('stamp_mountains', 'stamp_jungle');
+  }
+  if (MAPS[s.map] === undefined) Object.assign(s, { map: 'village', x: 6, y: 7, dir: 'down' });
+  return s;
+}
 
 export function newSave(): Save {
   return { map: 'village', x: 6, y: 7, dir: 'down', flags: [], items: [], seen: {}, wallet: { taler: 20 } };
@@ -1324,7 +1448,7 @@ const has = (s: Save, f: string) => s.flags.includes(f);
 
 /** Which objects are there right now (roadblocks go once cleared, the barrier once stamped, items once taken). */
 export function present(o: Obj, s: Save): boolean {
-  if (o.k === 'log' || o.k === 'drift' || o.k === 'bramble' || o.k === 'towngate' || o.k === 'pole') return !has(s, o.until);
+  if (o.k === 'log' || o.k === 'drift' || o.k === 'bramble' || o.k === 'towngate' || o.k === 'pole' || o.k === 'block') return !has(s, o.until);
   if (o.k === 'bridge') return has(s, o.when);
   if (o.k === 'gate') return !has(s, `stamp_${o.country}`);
   if (o.k === 'item') return !has(s, `got_${o.id}`);
@@ -1364,12 +1488,25 @@ export type Step =
   /** Money in (n > 0) or out of the wallet. */
   | { money: Currency; n: number }
   /** Ride the train (to a station city, its id in STATIONS_BUILT) or the metro (to a district): a short cutscene, then the platform there. */
-  | { ride: 'train' | 'metro'; to: string };
+  | { ride: 'train' | 'metro'; to: string }
+  /** A message in English (ENGLISH): what the English-speaking tourist says. */
+  | { eng: keyof typeof ENGLISH };
+
+/**
+ * Kiki the koala speaks English, not the course language: she is a tourist like the cat, and she offers the
+ * translation job (the phone), so there is always a way to earn money and nobody gets stuck.
+ */
+export const ENGLISH = {
+  hello1: { title: 'Kiki, a tourist', body: "Oh, hello! You understand English? What luck! I'm Kiki. I'm travelling around the world, and I don't understand a single word of the language here." },
+  hello2: { title: 'Kiki, a tourist', body: "Back home I run a little translation office, and there's far too much work. You seem like a clever cat. Would you like a job? Translate a few words into English for me, and I'll pay you in the local money, wherever you are." },
+  howto: { title: 'The translation job', body: 'Do it whenever you like, in every country: tap the phone at the top of the screen (or press P). Each round is five words. You earn one coin of the local money for every right answer, and one more for a perfect round. There is always more work.' },
+  again: { title: 'Kiki, a tourist', body: "How's the translating going? Remember: the phone works everywhere, even in the far countries. Short of money? Do a round!" },
+} as const;
 
 const TWIGS: Record<'birch' | 'willow' | 'pine', ItemKind> = { birch: 'twig_birch', willow: 'twig_willow', pine: 'twig_pine' };
 
 /** The border officer: introduction once, then the exam whenever the cat is ready. */
-function clerk(country: Country, who: 'owl' | 'walrus' | 'flamingo', s: Save): Step[] {
+function clerk(country: Country, who: string, s: Save): Step[] {
   if (has(s, `stamp_${country}`)) return [{ say: `${who}.done`, who }];
   const intro: Step[] = has(s, `met_${who}`) ? [] : [{ say: `${who}.hello1`, who }, { say: `${who}.hello2`, who }, { set: `met_${who}` }];
   return [...intro, {
@@ -1388,32 +1525,42 @@ function clerk(country: Country, who: 'owl' | 'walrus' | 'flamingo', s: Save): S
 
 /** What happens when the player faces `o` and presses A. */
 export function script(o: Obj, s: Save): Step[] {
+  // the countries built as modules script their own maps
+  const country = MAPS[s.map]?.country;
+  for (const m of MODULES) if (m.country === country) { const r = m.script(o, s); if (r) return r; }
   // the courier job: whoever a parcel is for takes it first, whatever else they have to say
   const rcpt = o.k === 'npc' ? o.id : o.k === 'desk' ? o.clerk : o.k === 'stall' ? o.vendor : undefined;
   if (rcpt && has(s, `parcel_${rcpt}`) && s.items.includes('parcel')) {
     return [{ take: 'parcel' }, { unset: `parcel_${rcpt}` }, { say: 'courier.thanks', who: rcpt as NpcKind }, { money: 'kredit', n: 6 }, { xp: 5, why: 'for a delivery' }];
   }
   if (o.k === 'stall') return o.vendor ? script({ k: 'npc', id: o.vendor, x: 0, y: 0, npc: o.vendor as NpcKind }, s) : [{ say: 'stall.look' }];
-  if (o.k === 'door') return [{ say: `house.${o.sign}` }];
+  // a city door: walking into it goes inside when there is a way in; otherwise it says what's there
+  if (o.k === 'door') return MAPS[s.map]?.warps.some((w) => w.door && w.x === o.x && w.y === o.y) ? [] : [{ say: `house.${o.sign}` }];
   if (o.k === 'lamp') return [];
   if (o.k === 'metro') return [{ say: 'metro.entrance' }];
   if (o.k === 'train' && o.kind === 'train') {
-    // a mainline train: board it only with a ticket for where it goes
-    if (o.dest === 'none') return [{ say: 'train.outofservice' }];
-    const t = STATIONS_BUILT.find((d) => has(s, `ticket_${d.id}`));
-    if (!t) return [{ say: `train.this_${o.dest}` }, { say: 'train.needticket' }];
-    if (t.id !== o.dest) return [{ say: `train.this_${o.dest}` }, { say: 'train.wrongtrain' }];
-    return [{ say: `train.this_${o.dest}` }, { unset: `ticket_${t.id}` }, { say: 'train.board' }, { ride: 'train', to: t.id }];
+    // a mainline train: board it with a ticket to a city the way it goes
+    if (o.dest === 'none' || !o.dest) return [{ say: 'train.outofservice' }];
+    const here = s.map.replace(/^gleis_/, '');
+    const t = RAIL.find((c) => has(s, `ticket_${c}`));
+    if (!t) return [{ say: `train.${o.dest}` }, { say: 'train.needticket' }];
+    if (directionTo(here, t) !== o.dest) return [{ say: `train.${o.dest}` }, { say: 'train.wrongtrain' }];
+    return [{ say: `train.${o.dest}` }, { unset: `ticket_${t}` }, { say: 'train.board' }, { ride: 'train', to: t }];
   }
   if (o.k === 'decor' && o.art.startsWith('psign')) {
     const city = s.map.replace(/^(gleis|under)_/, '');
     const n = Number(o.art.slice(5)) - 1;
-    return [{ say: `psign${n + 1}.${PLATFORMS[city]?.[n] ?? 'none'}` }];
+    const d = PLATFORMS[city]?.[n] ?? 'none';
+    return [{ say: d === 'none' ? `psign${n + 1}.none` : `psign${n + 1}.${d}_${city}` }];
   }
   if (o.k === 'decor' && o.art === 'board') return [{ say: `board.${s.map}` }];
   if (o.k === 'decor' && o.art === 'ticketmachine') return script({ k: 'npc', id: 'ticketmachine', x: 0, y: 0, npc: 'raccoon' }, s);
   if (o.k === 'decor') return ['statue', 'kiosk', 'busstop'].includes(o.art) ? [{ say: `decor.${o.art}` }] : [];
   if (o.k === 'npc' && (o.id.startsWith('pass_') || o.id.startsWith('mp_'))) return [{ say: `${o.id}.1`, who: o.npc }, { say: `${o.id}.2`, who: o.npc }];
+  // residents in their homes: something interesting about the region (or anything); a short extra line on a later visit
+  if (o.k === 'npc' && o.id.startsWith('res_')) {
+    return has(s, `talked_${o.id}`) ? [{ say: `${o.id}.3`, who: o.id }] : [{ say: `${o.id}.1`, who: o.id }, { say: `${o.id}.2`, who: o.id }, { set: `talked_${o.id}` }];
+  }
   if (o.k === 'ship') return [{ say: 'ship.look' }];
   if (o.k === 'desk') return script({ k: 'npc', id: o.clerk, x: 0, y: 0, npc: o.clerk as NpcKind }, s);
   if (o.k === 'gate') return [{ say: 'gate.closed' }];
@@ -1431,6 +1578,10 @@ export function script(o: Obj, s: Save): Step[] {
   if (o.k === 'item') return [{ say: `pickup.${o.item}` }, { give: o.item }, { set: `got_${o.id}` }];
   if (o.k === 'tree' && o.tree === 'oak') return [{ say: 'tree.oak' }];
   switch (o.id) {
+    case 'kiki':
+      // the translation job: a phone to earn the local money anywhere (so no one gets stuck without money)
+      if (has(s, 'job_translator')) return [{ eng: 'again' }];
+      return [{ eng: 'hello1' }, { eng: 'hello2' }, { give: 'phone' }, { set: 'job_translator' }, { eng: 'howto' }];
     case 'tortoise': {
       if (has(s, 'log_cleared')) return [{ say: 'tortoise.done', who: 'tortoise' }];
       if (has(s, 'met_tortoise')) return [{ say: 'tortoise.again', who: 'tortoise' }];
@@ -1715,9 +1866,9 @@ export function script(o: Obj, s: Save): Step[] {
       const here = s.map.replace('station_', '');
       const cur = CURRENCY_OF[MAPS[s.map].country] ?? 'taler';
       const price = 5;
-      const has_ticket = STATIONS_BUILT.find((d) => has(s, `ticket_${d.id}`));
+      const has_ticket = STATIONS_BUILT().find((d) => has(s, `ticket_${d.id}`));
       if (has_ticket) return [{ say: 'train.platform', who: 'raccoon' }];
-      const dests = STATIONS_BUILT.filter((d) => d.id !== here && (!d.needs || has(s, d.needs)));
+      const dests = STATIONS_BUILT().filter((d) => d.id !== here && (!d.needs || has(s, d.needs)));
       if (!dests.length) return [{ say: 'train.hello', who: 'raccoon' }, { say: 'train.nostamp', who: 'raccoon' }];
       return [{ say: 'train.hello', who: 'raccoon' }, {
         ask: 'train.ask', who: 'raccoon', opts: [
@@ -1941,15 +2092,78 @@ export const THINGS = [
   'bench', 'bikes', 'statue', 'kiosk', 'busstop', 'table', 'crates', 'barrel', 'bin', 'flowerbed', 'car', 'park',
   'train', 'metrotrain', 'platform', 'ticketmachine', 'board', 'stairs', 'pillar', 'poster', 'platformsign', 'underpass',
 ] as const;
-export type Thing = (typeof THINGS)[number];
+/** A "name it" key: one of THINGS, an animal (NPC kind) or a thing of a country module. */
+export type Thing = (typeof THINGS)[number] | (string & {});
+/** Every "name it" key, the country modules' included. */
+export const ALL_THINGS: string[] = [...THINGS, ...MODULES.flatMap((m) => m.things), ...EXTENSIONS.flatMap((e) => e.things)];
 
 /** Every NPC kind (each needs a name in every language). */
-export const NPC_KINDS: NpcKind[] = ['tortoise', 'beaver', 'frog', 'bird', 'owl', 'penguin', 'bat', 'walrus', 'crab',
+export const NPC_KINDS: NpcKind[] = [...MODULES.flatMap((m) => m.npcKinds), 'koala', 'tortoise', 'beaver', 'frog', 'bird', 'owl', 'penguin', 'bat', 'walrus', 'crab',
   'hedgehog', 'deer', 'dog', 'fox', 'mouse', 'badger', 'goose', 'rabbit', 'squirrel',
   'arcticfox', 'reindeer', 'polarbear', 'husky', 'seal', 'raccoon',
   'pigeon', 'seagull', 'sloth', 'parrot', 'flamingo', 'poodle', 'kangaroo', 'stork', 'pig'];
 
-const clerkLines = (w: string) => ['hello1', 'hello2', 'ready', 'pass', 'gate', 'fail', 'later', 'done'].map((k) => `${w}.${k}`);
+function clerkLines(w: string) { return ['hello1', 'hello2', 'ready', 'pass', 'gate', 'fail', 'later', 'done'].map((k) => `${w}.${k}`); }
+
+/**
+ * The English name of every place (maps and countries): the same in every course. Each language names a place in its
+ * own words by what this means, so it sounds native (Mossville = Moosdorf = 青苔村), never by how another language
+ * sounds. English names never contain a character's name, since those differ per language.
+ */
+export const PLACE_EN: Record<string, string> = {
+  ...Object.assign({}, ...MODULES.map((m) => m.places), ...EXTENSIONS.map((e) => e.places)),
+  forest: "Woodland",
+  ice: "Frostland",
+  metro: "Megacity",
+  beach: "Sun Coast",
+  village: "Mossville",
+  sonnenwald: "Sunwood",
+  lindenburg: "Lindenburg",
+  tourist_info: "Lindenburg tourist information",
+  under_lindenburg: "Underpass",
+  gleis_lindenburg: "Platforms",
+  under_frostburg: "Underpass",
+  gleis_frostburg: "Platforms",
+  under_central: "Underpass",
+  gleis_central: "Platforms",
+  station_lindenburg: "Lindenburg station",
+  millbrook: "Millbrook",
+  bakery: "Millbrook bakery",
+  birchvale: "Birch Grove",
+  oakridge: "Oak Valley",
+  border_forest: "Border Woods",
+  office_forest: "Woodland border office",
+  snowfield: "Snowfield",
+  exchange: "Snowfield exchange office",
+  clothes: "Snowfield clothes shop",
+  frostheim: "Frostheim",
+  cave: "Great Ice Cave",
+  glacier: "Glacier Camp",
+  frostburg: "Frostburg",
+  station_frostburg: "Frostburg station",
+  icefjord: "Icefjord",
+  border_ice: "Border Road",
+  office_ice: "Frostland border office",
+  central: "Megacity · Central Station",
+  station_central: "Megacity central station",
+  mexchange: "Megacity exchange office",
+  school: "Megacity language school",
+  oldtown: "Megacity · Old Town",
+  cafe: "Poodle Café",
+  lostfound: "Megacity lost and found",
+  harbour: "Megacity · Harbour",
+  market: "Megacity · Market",
+  towers: "Megacity · Towers",
+  courier: "Kangaroo Couriers",
+  border_metro: "Megacity · Border",
+  office_metro: "Megacity border office",
+  metro_central: "Central Station metro",
+  metro_oldtown: "Old Town metro",
+  metro_harbour: "Harbour metro",
+  metro_market: "Market metro",
+  metro_towers: "Towers metro",
+  shellbay: "Shell Bay",
+};
 
 /** Every line key the world uses (the text check makes sure each language has them all). */
 export const LINE_KEYS = [
@@ -1992,7 +2206,7 @@ export const LINE_KEYS = [
   'exch.k5', 'exch.k10', 'exch.k15', 'exch.k20', 'exch.k30', 'exch.k40', 'exch.k60', 'exch.right', 'exch.wrong', 'exch.done',
   'shop.ask', 'shop.order1', 'shop.order2', 'shop.order3', 'shop.sunglasses', 'shop.tshirt', 'shop.price', 'shop.pay4', 'shop.pay14', 'shop.pay40',
   'shop.toolittle', 'shop.toomuch', 'shop.thanks', 'shop.nomoney', 'shop.done',
-  'train.hello', 'train.ask', 'train.to_lindenburg', 'train.to_frostburg', 'train.price_taler', 'train.price_krone', 'train.board', 'train.nomoney', 'train.nostamp', 'train.bye',
+  'train.hello', 'train.ask', 'train.to_lindenburg', 'train.to_frostburg', 'train.price_taler', 'train.price_krone', 'train.price_kredit', 'train.to_central', 'train.board', 'train.nomoney', 'train.nostamp', 'train.bye',
   'husky.hello1', 'husky.hello2', 'husky.ask', 'husky.a1', 'husky.a2', 'husky.a3', 'husky.right', 'husky.wrong', 'husky.done',
   'seal.hello1', 'seal.ask', 'seal.thanks', 'seal.nomoney', 'seal.bye', 'seal.done', 'local.hello1', 'local.hello2',
   'sign.snowfield', 'sign.storm', 'sign.glacier', 'sign.sled', 'sign.frostburg', 'sign.timetable2', 'sign.icefjord',
@@ -2015,14 +2229,20 @@ export const LINE_KEYS = [
   'sign.central', 'sign.oldtown', 'sign.harbour', 'sign.market', 'sign.towers', 'sign.metromap', 'sign.border3', 'flag.metro', 'stall.look', 'ship.look',
   'hanna_mc.1', 'hanna_mc.2', 'greta_mc.1', 'greta_mc.2', 'fritz_mc.1', 'fritz_mc.2', 'mia_mc.1', 'mia_mc.2', 'frieda_mc.1', 'frieda_mc.2', 'rieke_mc.1', 'rieke_mc.2',
   'decor.statue', 'decor.kiosk', 'decor.busstop',
-  'train.platform', 'train.needticket', 'train.wrongtrain', 'train.outofservice', 'train.this_lindenburg', 'train.this_frostburg', 'train.this_central',
-  ...[1, 2, 3].flatMap((n) => ['lindenburg', 'frostburg', 'central', 'none'].map((d) => `psign${n}.${d}`)),
+  'train.platform', 'train.needticket', 'train.wrongtrain', 'train.outofservice', 'train.north', 'train.south',
+  ...[1, 2, 3].map((n) => `psign${n}.none`),
+  ...Object.entries(PLATFORMS).flatMap(([city, ps]) => ps.flatMap((d, n) => (d === 'none' ? [] : [`psign${n + 1}.${d}_${city}`]))),
+  'train.to_oasis', 'train.to_sunport', 'train.price_dinar', 'train.price_sol',
+  'board.station_oasis', 'board.station_sunport',
   'metro.needticket', 'metro.haveticket', 'metro.entrance',
   'board.station_lindenburg', 'board.station_frostburg', 'board.station_central',
   'board.metro_central', 'board.metro_oldtown', 'board.metro_harbour', 'board.metro_market', 'board.metro_towers',
   'pass_l1.1', 'pass_l1.2', 'pass_l2.1', 'pass_l2.2', 'pass_f1.1', 'pass_f1.2', 'pass_f2.1', 'pass_f2.2', 'pass_c1.1', 'pass_c1.2', 'pass_c2.1', 'pass_c2.2',
   'mp_central.1', 'mp_central.2', 'mp_oldtown.1', 'mp_oldtown.2', 'mp_harbour.1', 'mp_harbour.2', 'mp_market.1', 'mp_market.2', 'mp_towers.1', 'mp_towers.2',
+  'item.phone', 'thing.koala',
   'item.fishroll', 'item.parcel', 'item.daypass', 'item.pc_forest', 'item.pc_ice', 'item.pc_metro', 'item.pc_beach',
   'squirrel.hello1', 'squirrel.hello2', 'squirrel.reminder', 'squirrel.yes1', 'squirrel.yes2', 'squirrel.done', 'pickup.acorn', 'item.acorn', 'sign.oakridge',
-  ...THINGS.map((t) => `thing.${t}`),
+  ...ALL_THINGS.map((t) => `thing.${t}`),
+  ...MODULES.flatMap((m) => m.lineKeys),
+  ...EXTENSIONS.flatMap((e) => e.lineKeys),
 ];

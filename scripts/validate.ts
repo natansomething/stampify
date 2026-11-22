@@ -9,7 +9,7 @@ import { stems } from '../src/core/util';
 import { hanCount, pinyinFits } from '../src/core/pinyin';
 import { LANG_IDS, LANGS as META } from '../src/core/langs';
 import { longTexts, staleLibraries } from './library';
-import { COUNTRIES, LINE_KEYS, MAPS, NPC_KINDS } from '../src/games/adventure/world';
+import { COUNTRIES, LINE_KEYS, MAPS, NPC_KINDS, PLACE_EN, ROUTE } from '../src/games/adventure/world';
 
 const LANGS = LANG_IDS;
 /** Allowed noun genders per language (languages without gender are missing). */
@@ -461,6 +461,10 @@ for (const lang of only ? [only] : LANGS) {
 }
 
 // Adventure dialogue (optional per language): every line the world uses, tokenised like texts
+type Adv = import('../src/content/types').AdventureText;
+const ADV: Partial<Record<LangId, Adv>> = {};
+for (const lang of LANGS) if (existsSync(`src/content/${lang}/adventure.ts`)) ADV[lang] = (await import(`../src/content/${lang}/adventure.ts`)).default;
+const englishPlaces = new Set(Object.values(PLACE_EN).flatMap((p) => [p, ...p.split(' · ')]));
 for (const lang of only ? [only] : LANGS) {
   const file = `src/content/${lang}/adventure.ts`;
   if (!existsSync(file)) continue;
@@ -475,7 +479,45 @@ for (const lang of only ? [only] : LANGS) {
   }
   for (const k of Object.keys(a.lines)) if (!(LINE_KEYS as readonly string[]).includes(k)) warn(`${lang} adventure`, `line ${k} is not used by the world`);
   for (const n of NPC_KINDS) if (!a.names[n]) err(`${lang} adventure`, `no name for ${n}`);
+  // residents (NPCs 'res_…' in homes) are named one by one; a name belongs to one character only
+  for (const m of Object.values(MAPS)) for (const o of m.objs) if (o.k === 'npc' && o.id.startsWith('res_') && !a.names[o.id]) err(`${lang} adventure`, `no name for resident ${o.id} (${m.id})`);
+  const owners = new Map<string, string>();
+  for (const [k, n] of Object.entries(a.names)) { const o = owners.get(n); if (o) err(`${lang} adventure`, `the name "${n}" is used for both ${o} and ${k}`); else owners.set(n, k); }
   for (const id of [...Object.keys(MAPS), ...Object.keys(COUNTRIES)]) if (!a.places[id]) err(`${lang} adventure`, `no place name for ${id}`);
+  // English is the same in every course: place names from PLACE_EN, and no other course's character or place names
+  // (a learner of Chinese must not meet the German names in the English translation)
+  for (const [id, p] of Object.entries(a.places)) if (PLACE_EN[id] && p[1] !== PLACE_EN[id]) err(`${lang} adventure place ${id}`, `English must be "${PLACE_EN[id]}" (PLACE_EN), not "${p[1]}"`);
+  const own = new Set([...Object.values(a.names), ...(a.proper ?? [])]);
+  const foreign = new Set<string>();
+  for (const [l2, b] of Object.entries(ADV)) if (l2 !== lang && b) {
+    for (const w of [...Object.values(b.names), ...Object.values(b.places).flatMap((p) => p[0].split(' · '))]) {
+      if (/^[\p{Script=Latin}][\p{Script=Latin}\s'-]+$/u.test(w) && w.length > 2 && !englishPlaces.has(w) && !own.has(w)) foreign.add(w);
+    }
+  }
+  const re = foreign.size ? new RegExp(`(?<![\\p{L}])(${[...foreign].map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})(?![\\p{L}])`, 'u') : null;
+  if (re) for (const [k, ln] of Object.entries(a.lines)) {
+    for (const text of [ln.en, ...ln.t.map((t) => t[2])]) {
+      const m = text?.match(re);
+      if (m) { err(`${lang} adventure ${k}`, `English uses "${m[1]}", a name from another course: use this course's name (transliterated) or the English place name`); break; }
+    }
+  }
+  // border exam words: hand-picked per country, from the vocabulary or with their own reading and meaning
+  const vocab = new Set((await loadContent(lang)).vocab.flatMap((v) => [v.w, v.w.toLowerCase()]));
+  for (const c of ROUTE.filter((c) => MAPS[`office_${c}`])) {
+    const list = a.exam?.[c] ?? [];
+    if (list.length < 10) err(`${lang} adventure exam ${c}`, `needs at least 10 words (has ${list.length})`);
+    const said = new Set(Object.entries(a.lines).filter(([k]) => COUNTRIES[c].lines.some((p) => k.startsWith(p))).flatMap(([, v]) => v.t.flatMap((t) => [t[0], t[3] ?? t[0]]).map((x) => x.toLowerCase())));
+    for (const x of list) {
+      const w = typeof x === 'string' ? x : x[0].replace(lang === 'de' ? /^(der|die|das) / : /^$/, '');
+      if (typeof x === 'string') { if (!vocab.has(x) && !vocab.has(x.toLowerCase())) err(`${lang} adventure exam ${c}`, `"${x}" is not in the vocabulary: write it as [word, reading, English]`); }
+      else {
+        if (!x[2]) err(`${lang} adventure exam ${c}`, `"${x[0]}" needs its English meaning`);
+        if (lang === 'zh' && (!x[1] || !pinyinFits(x[0], x[1]))) err(`${lang} adventure exam ${c}`, `"${x[0]}" needs matching pinyin`);
+        if (vocab.has(w)) warn(`${lang} adventure exam ${c}`, `"${w}" is in the vocabulary: list it as a plain string`);
+      }
+      if (![...said].some((t) => t === w.toLowerCase() || (lang !== 'zh' && t.startsWith(w.toLowerCase().slice(0, -1))))) warn(`${lang} adventure exam ${c}`, `"${w}" is never said in this country`);
+    }
+  }
   console.log(`  ${Object.keys(a.lines).length} lines`);
 }
 

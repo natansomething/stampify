@@ -1103,4 +1103,3 @@ details.fold.danger > summary b { color: var(--bad); }
 .adv-ride canvas { width: min(100%, calc((100dvh - 120px) * 16 / 9)); aspect-ratio: 16 / 9; image-rendering: pixelated; }
 .adv-ride-title { position: absolute; top: 16px; left: 50%; transform: translateX(-50%); background: #fbf7ea; color: #1d2a22; border: 3px solid #2c4a36;
   border-radius: 10px; padding: 6px 16px; font-family: var(--font-display); font-size: 1.3rem; text-transform: uppercase; letter-spacing: 0.04em; white-space: nowrap; }
-.adv-ride-skip { position: absolute; bottom: 16px; right: 16px; background: rgba(251, 247, 234, 0.85); border: 2px solid #2c4a36; border-radius: 8px; padding: 4px 12px; font: 700 0.75rem var(--font-mono); text-transform: uppercase; cursor: pointer; }
